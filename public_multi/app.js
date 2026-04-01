@@ -119,6 +119,10 @@ function renderAccount(key, data) {
       qrModalText.textContent = `Masukkan pairing code ini di WhatsApp: ${data.pairingCode}`;
       qrModalImage.classList.add("hidden");
       qrModalImage.removeAttribute("src");
+    } else if (data.method === "pairing" && data.qrDataUrl) {
+      qrModalText.textContent = "Pairing code gagal dibuat, jadi sistem menampilkan QR sebagai fallback.";
+      qrModalImage.src = data.qrDataUrl;
+      qrModalImage.classList.remove("hidden");
     } else if (data.qrDataUrl) {
       qrModalText.textContent = "Scan QR ini dengan WhatsApp pada akun yang dipilih.";
       qrModalImage.src = data.qrDataUrl;

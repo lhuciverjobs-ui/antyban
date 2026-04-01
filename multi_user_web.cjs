@@ -255,7 +255,7 @@ function runtime(userId) {
 }
 
 function blankAccount() {
-  return { client: null, phone: null, status: "idle", qrDataUrl: null, pairingCode: null, lastError: null };
+  return { client: null, phone: null, status: "idle", method: null, qrDataUrl: null, pairingCode: null, lastError: null };
 }
 
 function log(userId, message) {
@@ -267,6 +267,7 @@ function log(userId, message) {
 function accountState(acc) {
   return {
     status: acc.status,
+    method: acc.method,
     qrDataUrl: acc.qrDataUrl,
     pairingCode: acc.pairingCode,
     lastError: acc.lastError,
@@ -334,15 +335,29 @@ async function connectAccount(user, key, method) {
   }
 
   const client = makeClient(user.id, key, phone);
-  rt.accounts[key] = { client, phone, status: "initializing", qrDataUrl: null, pairingCode: null, lastError: null };
+  rt.accounts[key] = { client, phone, status: "initializing", method, qrDataUrl: null, pairingCode: null, lastError: null };
   log(user.id, `${cfg.label} mulai connect (${method}).`);
 
   client.on("qr", async (qr) => {
     const acc = runtime(user.id).accounts[key];
     acc.status = "awaiting_scan";
-    try { acc.qrDataUrl = await QRCode.toDataURL(qr, { width: 280, margin: 1 }); } catch (e) { acc.lastError = e.message; }
+    acc.method = method;
     if (method === "pairing") {
-      try { acc.pairingCode = await client.requestPairingCode(phone); } catch (e) { acc.lastError = e.message; }
+      try {
+        acc.pairingCode = await client.requestPairingCode(phone);
+        acc.qrDataUrl = null;
+        acc.lastError = null;
+      } catch (e) {
+        acc.lastError = `Pairing code gagal, pakai QR fallback: ${e.message}`;
+        try { acc.qrDataUrl = await QRCode.toDataURL(qr, { width: 280, margin: 1 }); } catch (qrErr) { acc.lastError = qrErr.message; }
+      }
+    } else {
+      try {
+        acc.qrDataUrl = await QRCode.toDataURL(qr, { width: 280, margin: 1 });
+        acc.pairingCode = null;
+      } catch (e) {
+        acc.lastError = e.message;
+      }
     }
   });
   client.on("authenticated", () => { runtime(user.id).accounts[key].status = "authenticated"; log(user.id, `${cfg.label} authenticated.`); });
