@@ -136,11 +136,17 @@ function render(payload) {
   appCard.classList.remove("hidden");
   document.body.classList.add("dashboard-body");
   document.getElementById("welcomeText").textContent = payload.user.username;
+  const startBotBtn = document.getElementById("startBotBtn");
+  const stopBotBtn = document.getElementById("stopBotBtn");
   const botText = payload.bot.running ? "jalan" : "mati";
   document.getElementById("botStatus").textContent = botText;
   document.getElementById("botStatusBadge").textContent = payload.bot.running ? "bot online" : "bot offline";
   document.getElementById("botStatusBadge").className = `status-chip ${payload.bot.running ? "on" : "off"}`;
   document.getElementById("botStatusMini").textContent = payload.bot.running ? "bot online" : "live feed";
+  startBotBtn.disabled = payload.bot.running;
+  stopBotBtn.disabled = !payload.bot.running;
+  startBotBtn.classList.toggle("is-disabled", payload.bot.running);
+  stopBotBtn.classList.toggle("is-disabled", !payload.bot.running);
   document.getElementById("logBox").textContent = (payload.logs || []).join("\n") || "Belum ada log.";
   fillConfig(payload.user.config);
   renderAccount("account1", payload.accounts.account1);

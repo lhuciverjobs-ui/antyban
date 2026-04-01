@@ -270,6 +270,15 @@ textarea {
   transform: translateY(-2px);
 }
 
+.btn.is-disabled,
+.btn:disabled {
+  opacity: 0.38;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+  filter: grayscale(0.2);
+}
+
 .primary-btn,
 .btn.primary {
   background: linear-gradient(135deg, var(--gold), var(--gold-2));

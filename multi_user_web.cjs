@@ -87,6 +87,18 @@ function chatId(phone) {
   return `${formatNumber(phone)}@c.us`;
 }
 
+function withTimeout(promise, ms, label) {
+  let timer = null;
+  return Promise.race([
+    promise.finally(() => {
+      if (timer) clearTimeout(timer);
+    }),
+    new Promise((_, reject) => {
+      timer = setTimeout(() => reject(new Error(`${label} timeout setelah ${Math.round(ms / 1000)} detik.`)), ms);
+    }),
+  ]);
+}
+
 function readMessagesFromFile(filePath) {
   const defaultMessages1 = ["Halo!", "Apa kabar?", "Lagi ngapain?"];
   const defaultMessages2 = ["Baik, makasih!", "Santai nih.", "Gak ngapa-ngapain."];
@@ -344,7 +356,9 @@ async function sendFrom(user, key, targetPhone, messages) {
   const sender = runtime(user.id).accounts[key];
   if (!sender.client || sender.status !== "ready") throw new Error(`${user.config[key].label} belum ready.`);
   const msg = messages[Math.floor(Math.random() * messages.length)];
-  await sender.client.sendMessage(chatId(targetPhone), msg);
+  const targetChatId = chatId(targetPhone);
+  log(user.id, `${user.config[key].label} mencoba kirim ke ${targetPhone}...`);
+  await withTimeout(sender.client.sendMessage(targetChatId, msg), 20000, `Kirim ${user.config[key].label}`);
   log(user.id, `${user.config[key].label} -> ${targetPhone}: ${msg}`);
 }
 
