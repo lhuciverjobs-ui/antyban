@@ -388,26 +388,37 @@ async function sendFrom(user, key, targetPhone, messages) {
   const msg = messages[Math.floor(Math.random() * messages.length)];
   const targetChatId = chatId(targetPhone);
   log(user.id, `${user.config[key].label} mencoba kirim ke ${targetPhone}...`);
-  const numberInfo = await withTimeout(
-    sender.client.getNumberId(targetPhone),
-    10000,
-    `Cek nomor ${user.config[key].label}`
-  );
-  if (!numberInfo?._serialized) {
-    throw new Error(`${user.config[key].label} tidak menemukan akun WhatsApp tujuan ${targetPhone}.`);
+
+  let resolvedChatId = targetChatId;
+  try {
+    const numberInfo = await withTimeout(
+      sender.client.getNumberId(targetPhone),
+      10000,
+      `Cek nomor ${user.config[key].label}`
+    );
+    if (!numberInfo?._serialized) {
+      throw new Error(`${user.config[key].label} tidak menemukan akun WhatsApp tujuan ${targetPhone}.`);
+    }
+    resolvedChatId = numberInfo._serialized;
+    log(user.id, `${user.config[key].label} menemukan chat ${resolvedChatId}.`);
+  } catch (error) {
+    log(user.id, `${extractErrorMessage(error)} Fallback ke chat id langsung ${targetChatId}.`);
   }
 
-  log(user.id, `${user.config[key].label} menemukan chat ${numberInfo._serialized}.`);
-  const chat = await withTimeout(
-    sender.client.getChatById(numberInfo._serialized),
-    10000,
-    `Buka chat ${user.config[key].label}`
-  );
-  if (!chat) {
-    throw new Error(`${user.config[key].label} gagal membuka chat tujuan ${targetPhone}.`);
+  try {
+    const chat = await withTimeout(
+      sender.client.getChatById(resolvedChatId),
+      10000,
+      `Buka chat ${user.config[key].label}`
+    );
+    if (!chat) {
+      throw new Error(`${user.config[key].label} gagal membuka chat tujuan ${targetPhone}.`);
+    }
+    await withTimeout(chat.sendMessage(msg), 20000, `Kirim ${user.config[key].label}`);
+  } catch (error) {
+    log(user.id, `${extractErrorMessage(error)} Coba kirim langsung via client.sendMessage...`);
+    await withTimeout(sender.client.sendMessage(resolvedChatId, msg), 20000, `Kirim langsung ${user.config[key].label}`);
   }
-
-  await withTimeout(chat.sendMessage(msg), 20000, `Kirim ${user.config[key].label}`);
   log(user.id, `${user.config[key].label} -> ${targetPhone}: ${msg}`);
 }
 
