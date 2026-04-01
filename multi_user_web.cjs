@@ -412,16 +412,33 @@ async function startBot(user) {
   rt.bot.promise = (async () => {
     let turn = "account1";
     while (!rt.bot.stop) {
+      let success = false;
       if (turn === "account1") {
-        await sendFrom(user, "account1", account2.phone, messages1).catch((e) => log(user.id, e.message));
-        turn = "account2";
+        success = await sendFrom(user, "account1", account2.phone, messages1)
+          .then(() => true)
+          .catch((e) => {
+            log(user.id, e.message);
+            return false;
+          });
+        if (success) {
+          turn = "account2";
+        }
       } else {
-        await sendFrom(user, "account2", account1.phone, messages2).catch((e) => log(user.id, e.message));
-        turn = "account1";
+        success = await sendFrom(user, "account2", account1.phone, messages2)
+          .then(() => true)
+          .catch((e) => {
+            log(user.id, e.message);
+            return false;
+          });
+        if (success) {
+          turn = "account1";
+        }
       }
       const min = Math.min(intervalMinSec, intervalMaxSec) * 1000;
       const max = Math.max(intervalMinSec, intervalMaxSec) * 1000;
-      const delay = Math.floor(Math.random() * (max - min + 1)) + min;
+      const delay = success
+        ? Math.floor(Math.random() * (max - min + 1)) + min
+        : 5000;
       log(user.id, `Jeda ${Math.round(delay / 1000)} detik.`);
       await new Promise((resolve) => setTimeout(resolve, delay));
     }
