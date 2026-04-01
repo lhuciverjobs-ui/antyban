@@ -389,7 +389,26 @@ async function sendFrom(user, key, targetPhone, messages) {
   const msg = messages[Math.floor(Math.random() * messages.length)];
   const targetChatId = chatId(targetPhone);
   log(user.id, `${user.config[key].label} mencoba kirim ke ${targetPhone}...`);
-  await withTimeout(sender.client.sendMessage(targetChatId, msg), 20000, `Kirim ${user.config[key].label}`);
+  const numberInfo = await withTimeout(
+    sender.client.getNumberId(targetPhone),
+    10000,
+    `Cek nomor ${user.config[key].label}`
+  );
+  if (!numberInfo?._serialized) {
+    throw new Error(`${user.config[key].label} tidak menemukan akun WhatsApp tujuan ${targetPhone}.`);
+  }
+
+  log(user.id, `${user.config[key].label} menemukan chat ${numberInfo._serialized}.`);
+  const chat = await withTimeout(
+    sender.client.getChatById(numberInfo._serialized),
+    10000,
+    `Buka chat ${user.config[key].label}`
+  );
+  if (!chat) {
+    throw new Error(`${user.config[key].label} gagal membuka chat tujuan ${targetPhone}.`);
+  }
+
+  await withTimeout(chat.sendMessage(msg), 20000, `Kirim ${user.config[key].label}`);
   log(user.id, `${user.config[key].label} -> ${targetPhone}: ${msg}`);
 }
 
