@@ -115,6 +115,10 @@ function renderAccount(key, data) {
     if (data.status === "ready") {
       closeQrModal();
       notify(`${key} berhasil terhubung.`);
+    } else if (data.pairingCode) {
+      qrModalText.textContent = `Masukkan pairing code ini di WhatsApp: ${data.pairingCode}`;
+      qrModalImage.classList.add("hidden");
+      qrModalImage.removeAttribute("src");
     } else if (data.qrDataUrl) {
       qrModalText.textContent = "Scan QR ini dengan WhatsApp pada akun yang dipilih.";
       qrModalImage.src = data.qrDataUrl;
@@ -165,14 +169,15 @@ async function refresh(silent = false) {
 
 registerForm.addEventListener("submit", async (event) => {
   event.preventDefault();
-  const form = new FormData(event.currentTarget);
+  const formEl = event.currentTarget;
+  const form = new FormData(formEl);
   try {
     await api("/api/register", {
       method: "POST",
       body: JSON.stringify({ username: form.get("username"), password: form.get("password") }),
     });
     notify("User berhasil dibuat.");
-    event.currentTarget.reset();
+    formEl.reset();
     showAuthTab("login");
   } catch (error) {
     notify(error.message, true);
@@ -181,7 +186,8 @@ registerForm.addEventListener("submit", async (event) => {
 
 loginForm.addEventListener("submit", async (event) => {
   event.preventDefault();
-  const form = new FormData(event.currentTarget);
+  const formEl = event.currentTarget;
+  const form = new FormData(formEl);
   try {
     const data = await api("/api/login", {
       method: "POST",
@@ -191,7 +197,7 @@ loginForm.addEventListener("submit", async (event) => {
     localStorage.setItem("wa_multi_token", data.token);
     await refresh(true);
     notify("Login berhasil.");
-    event.currentTarget.reset();
+    formEl.reset();
   } catch (error) {
     notify(error.message, true);
   }
@@ -220,17 +226,18 @@ document.querySelectorAll("[data-connect]").forEach((button) => {
     try {
       const accountKey = button.dataset.connect;
       const method = button.dataset.method;
-      if (method === "qr") {
+      if (method === "qr" || method === "pairing") {
         openQrModal(accountKey);
         startFastRefresh();
+        qrModalText.textContent = method === "pairing"
+          ? "Menunggu pairing code muncul..."
+          : "Menunggu QR muncul...";
       }
       render(await api("/api/connect", {
         method: "POST",
         body: JSON.stringify({ accountKey, method }),
       }));
-      if (method !== "qr") {
-        notify(`Proses ${accountKey} dimulai.`);
-      }
+      notify(`Proses ${accountKey} dimulai.`);
     } catch (error) {
       closeQrModal();
       notify(error.message, true);
