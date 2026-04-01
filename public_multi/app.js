@@ -1,6 +1,8 @@
 const state = {
   token: localStorage.getItem("wa_multi_token") || "",
   configEditingUntil: 0,
+  qrModalAccountKey: null,
+  fastRefreshUntil: 0,
 };
 const authCard = document.getElementById("authCard");
 const appCard = document.getElementById("appCard");
@@ -9,6 +11,10 @@ const loginForm = document.getElementById("loginForm");
 const registerForm = document.getElementById("registerForm");
 const loginTab = document.getElementById("loginTab");
 const registerTab = document.getElementById("registerTab");
+const qrModal = document.getElementById("qrModal");
+const qrModalTitle = document.getElementById("qrModalTitle");
+const qrModalText = document.getElementById("qrModalText");
+const qrModalImage = document.getElementById("qrModalImage");
 
 function notify(message, error = false) {
   toast.textContent = message;
@@ -57,6 +63,28 @@ function wirePasswordToggle(buttonId, inputId) {
   });
 }
 
+function openQrModal(accountKey) {
+  state.qrModalAccountKey = accountKey;
+  qrModalTitle.textContent = accountKey === "account1" ? "Scan QR Akun 1" : "Scan QR Akun 2";
+  qrModalText.textContent = "Menunggu QR muncul...";
+  qrModalImage.classList.add("hidden");
+  qrModalImage.removeAttribute("src");
+  qrModal.classList.remove("hidden");
+  qrModal.setAttribute("aria-hidden", "false");
+}
+
+function closeQrModal() {
+  state.qrModalAccountKey = null;
+  qrModal.classList.add("hidden");
+  qrModal.setAttribute("aria-hidden", "true");
+  qrModalImage.classList.add("hidden");
+  qrModalImage.removeAttribute("src");
+}
+
+function startFastRefresh(ms = 12000) {
+  state.fastRefreshUntil = Date.now() + ms;
+}
+
 function fillConfig(config) {
   const form = document.getElementById("configForm");
   const active = document.activeElement;
@@ -83,13 +111,23 @@ function renderAccount(key, data) {
   badge.className = `status-chip ${data.status === "ready" ? "on" : "off"}`;
   document.getElementById(`pairing${suffix}`).textContent = data.pairingCode ? `Pairing code: ${data.pairingCode}` : "";
   document.getElementById(`error${suffix}`).textContent = data.lastError || "";
-  const qr = document.getElementById(`qr${suffix}`);
-  if (data.qrDataUrl) {
-    qr.src = data.qrDataUrl;
-    qr.classList.remove("hidden");
-  } else {
-    qr.classList.add("hidden");
-    qr.removeAttribute("src");
+  if (state.qrModalAccountKey === key) {
+    if (data.status === "ready") {
+      closeQrModal();
+      notify(`${key} berhasil terhubung.`);
+    } else if (data.qrDataUrl) {
+      qrModalText.textContent = "Scan QR ini dengan WhatsApp pada akun yang dipilih.";
+      qrModalImage.src = data.qrDataUrl;
+      qrModalImage.classList.remove("hidden");
+    } else if (data.lastError) {
+      qrModalText.textContent = data.lastError;
+      qrModalImage.classList.add("hidden");
+      qrModalImage.removeAttribute("src");
+    } else {
+      qrModalText.textContent = "Menunggu QR muncul...";
+      qrModalImage.classList.add("hidden");
+      qrModalImage.removeAttribute("src");
+    }
   }
 }
 
@@ -174,12 +212,21 @@ document.getElementById("configForm").addEventListener("submit", async (event) =
 document.querySelectorAll("[data-connect]").forEach((button) => {
   button.addEventListener("click", async () => {
     try {
+      const accountKey = button.dataset.connect;
+      const method = button.dataset.method;
+      if (method === "qr") {
+        openQrModal(accountKey);
+        startFastRefresh();
+      }
       render(await api("/api/connect", {
         method: "POST",
-        body: JSON.stringify({ accountKey: button.dataset.connect, method: button.dataset.method }),
+        body: JSON.stringify({ accountKey, method }),
       }));
-      notify(`Proses ${button.dataset.connect} dimulai.`);
+      if (method !== "qr") {
+        notify(`Proses ${accountKey} dimulai.`);
+      }
     } catch (error) {
+      closeQrModal();
       notify(error.message, true);
     }
   });
@@ -188,6 +235,9 @@ document.querySelectorAll("[data-connect]").forEach((button) => {
 document.querySelectorAll("[data-disconnect]").forEach((button) => {
   button.addEventListener("click", async () => {
     try {
+      if (state.qrModalAccountKey === button.dataset.disconnect) {
+        closeQrModal();
+      }
       render(await api("/api/disconnect", {
         method: "POST",
         body: JSON.stringify({ accountKey: button.dataset.disconnect }),
@@ -218,6 +268,8 @@ document.getElementById("stopBotBtn").addEventListener("click", async () => {
 });
 
 document.getElementById("refreshBtn").addEventListener("click", () => refresh());
+document.getElementById("closeQrModalBtn").addEventListener("click", closeQrModal);
+document.querySelectorAll("[data-close-modal='true']").forEach((el) => el.addEventListener("click", closeQrModal));
 
 document.getElementById("logoutBtn").addEventListener("click", async () => {
   try { await api("/api/logout", { method: "POST" }); } catch {}
@@ -232,5 +284,10 @@ wirePasswordToggle("toggleRegisterPassword", "registerPassword");
 document.getElementById("configForm").addEventListener("input", markConfigEditing);
 document.getElementById("configForm").addEventListener("focusin", markConfigEditing);
 
-setInterval(() => refresh(true), 5000);
+setInterval(() => refresh(true), 1200);
+setInterval(() => {
+  if (Date.now() < state.fastRefreshUntil) {
+    refresh(true);
+  }
+}, 350);
 refresh(true);

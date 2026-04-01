@@ -162,7 +162,6 @@
                 </div>
                 <div class="stage-body">
                   <p id="pairing1" class="code-line"></p>
-                  <img id="qr1" class="qr hidden" alt="QR akun 1" />
                   <p id="error1" class="error-text"></p>
                 </div>
               </div>
@@ -184,7 +183,6 @@
                 </div>
                 <div class="stage-body">
                   <p id="pairing2" class="code-line"></p>
-                  <img id="qr2" class="qr hidden" alt="QR akun 2" />
                   <p id="error2" class="error-text"></p>
                 </div>
               </div>
@@ -211,6 +209,20 @@
       </section>
     </main>
 
+    <div id="qrModal" class="modal hidden" aria-hidden="true">
+      <div class="modal-backdrop" data-close-modal="true"></div>
+      <div class="modal-panel panel">
+        <div class="modal-head">
+          <div>
+            <div class="card-title">QR Connect</div>
+            <h3 id="qrModalTitle">Scan QR</h3>
+          </div>
+          <button id="closeQrModalBtn" class="mini-btn" type="button">Close</button>
+        </div>
+        <p id="qrModalText" class="section-copy">Menunggu QR muncul...</p>
+        <img id="qrModalImage" class="qr modal-qr hidden" alt="QR WhatsApp" />
+      </div>
+    </div>
     <div id="toast" class="toast hidden"></div>
     <script src="/app.js"></script>
   </body>
