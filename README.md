@@ -16,7 +16,7 @@ Bundle ini khusus untuk versi web saja.
 
 ```bash
 npm install
-npm run start:web
+npm start
 ```
 
 Buka:

@@ -19,7 +19,7 @@ npm install
 Run command:
 
 ```bash
-npm run start:web
+npm start
 ```
 
 Lalu buka preview Replit.
@@ -37,7 +37,7 @@ npm install
 Run command:
 
 ```bash
-npm run start:web
+npm start
 ```
 
 Port:
@@ -52,7 +52,9 @@ Minimal:
 - `PORT=3000`
 - `HOST=0.0.0.0`
 
-Optional jika Chromium bawaan Replit perlu dipakai manual:
+Default repo ini sekarang sudah membawa dependency `puppeteer`, jadi saat `npm install` browser Chrome akan ikut disiapkan otomatis.
+
+Optional jika Chromium bawaan Replit tetap perlu dipakai manual:
 
 - `PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium`
 
