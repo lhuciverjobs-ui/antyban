@@ -1,0 +1,11 @@
+run = "npm run start:web"
+entrypoint = "multi_user_web.cjs"
+
+[deployment]
+run = ["sh", "-c", "npm install && npm run start:web"]
+deploymentTarget = "cloudrun"
+
+[[ports]]
+localPort = 3000
+externalPort = 80
+

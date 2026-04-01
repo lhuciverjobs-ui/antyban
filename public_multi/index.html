@@ -1,0 +1,217 @@
+<!doctype html>
+<html lang="id">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>WA Bot Multi User</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div class="bg-orb orb-a"></div>
+    <div class="bg-orb orb-b"></div>
+    <div class="bg-grid"></div>
+    <main class="shell">
+      <section id="authCard" class="auth-shell">
+        <div class="auth-panel">
+          <p class="auth-kicker">secure_access_portal</p>
+          <h1 class="brand-title">WABOT <span>MULTI</span></h1>
+          <p class="brand-meta">created = ZAYS</p>
+
+          <div class="auth-tabs">
+            <button id="loginTab" class="auth-tab active" type="button">Login</button>
+            <button id="registerTab" class="auth-tab" type="button">Daftar</button>
+          </div>
+
+          <form id="loginForm" class="stack auth-form">
+            <label class="field">
+              <span>Username</span>
+              <input name="username" placeholder="masukkan_username" required />
+            </label>
+            <label class="field">
+              <span>Password</span>
+              <div class="password-wrap">
+                <input id="loginPassword" name="password" type="password" placeholder="........" required />
+                <button id="toggleLoginPassword" class="ghost-btn" type="button">Show</button>
+              </div>
+            </label>
+            <button class="primary-btn" type="submit">Masuk</button>
+            <p class="auth-note">Masuk dulu untuk buka dashboard milik akun Anda sendiri.</p>
+          </form>
+
+          <form id="registerForm" class="stack auth-form hidden">
+            <label class="field">
+              <span>Username</span>
+              <input name="username" placeholder="buat_username" required />
+            </label>
+            <label class="field">
+              <span>Password</span>
+              <div class="password-wrap">
+                <input id="registerPassword" name="password" type="password" placeholder="minimal_password" required />
+                <button id="toggleRegisterPassword" class="ghost-btn" type="button">Show</button>
+              </div>
+            </label>
+            <button class="primary-btn" type="submit">Buat Akun</button>
+            <p class="auth-note">Daftar sekali, lalu user tersebut bisa login dan mengelola bot-nya sendiri.</p>
+          </form>
+        </div>
+      </section>
+
+      <section id="appCard" class="app-shell hidden">
+        <aside class="sidebar panel">
+          <div class="brand brand-text-only">
+            <div>
+              <h1>WABOT <span>MULTI</span></h1>
+              <p>created = ZAYS</p>
+            </div>
+          </div>
+
+          <section class="card glass operator-card">
+            <div class="card-head">
+              <div class="card-title">Operator</div>
+              <button id="logoutBtn" class="mini-btn" type="button">Logout</button>
+            </div>
+            <div class="user-chip premium">
+              <span class="user-dot"></span>
+              <div>
+                <strong id="welcomeText">-</strong>
+                <span>multi user control</span>
+              </div>
+            </div>
+            <div class="inline-meta inline-split">
+              <span id="botStatusBadge" class="status-chip off">bot offline</span>
+              <span>session local</span>
+            </div>
+          </section>
+
+          <section class="card glass identity-card">
+            <div class="card-head">
+              <div>
+                <div class="card-title">Konfigurasi Bot</div>
+                <div class="card-subtitle">Set nomor akun, interval, dan template pesan untuk user ini.</div>
+              </div>
+              <button form="configForm" class="mini-btn accent" type="submit">Save</button>
+            </div>
+            <form id="configForm" class="stack">
+              <label>Akun 1</label>
+              <div class="grid two">
+                <input name="account1Label" placeholder="Label akun 1" />
+                <input name="account1Phone" placeholder="Nomor akun 1" />
+              </div>
+              <label>Akun 2</label>
+              <div class="grid two">
+                <input name="account2Label" placeholder="Label akun 2" />
+                <input name="account2Phone" placeholder="Nomor akun 2" />
+              </div>
+              <label>Timing</label>
+              <div class="grid two">
+                <input name="intervalMinSec" type="number" min="1" placeholder="Min detik" />
+                <input name="intervalMaxSec" type="number" min="1" placeholder="Max detik" />
+              </div>
+            </form>
+          </section>
+
+          <section class="actions two-only">
+            <button id="startBotBtn" class="btn primary" type="button">Start Bot</button>
+            <button id="stopBotBtn" class="btn danger" type="button">Stop Bot</button>
+          </section>
+        </aside>
+
+        <main class="main">
+          <section class="status-strip panel glass-line compact-top status-triplet">
+            <div class="status-box">
+              <span class="eyebrow">System Status</span>
+              <strong id="botStatus">mati</strong>
+            </div>
+            <div class="status-box">
+              <span class="eyebrow">Akun 1</span>
+              <strong id="status1">idle</strong>
+            </div>
+            <div class="status-box">
+              <span class="eyebrow">Akun 2</span>
+              <strong id="status2">idle</strong>
+            </div>
+            <div class="status-box">
+              <span class="eyebrow">Sync</span>
+              <strong>live</strong>
+            </div>
+          </section>
+
+          <section class="section">
+            <div class="section-head stage-headline">
+              <div>
+                <h2>WhatsApp Session Grid</h2>
+                <p class="section-copy">Kelola koneksi tiap akun dari satu dashboard, lengkap dengan QR dan pairing code.</p>
+              </div>
+              <button id="refreshBtn" class="mini-btn accent" type="button">Refresh</button>
+            </div>
+            <section class="pad-stage dynamic">
+              <div class="stage-card panel glass" id="accountCard1">
+                <div class="stage-top">
+                  <div>
+                    <div class="stage-tag">Akun 1</div>
+                    <h3>Akun pengirim pertama</h3>
+                  </div>
+                  <span class="status-chip off" id="badge1">idle</span>
+                </div>
+                <div class="stage-actions">
+                  <div class="actions two-only">
+                    <button data-connect="account1" data-method="pairing" class="btn primary" type="button">Connect Pairing</button>
+                    <button data-connect="account1" data-method="qr" class="btn muted" type="button">Connect QR</button>
+                  </div>
+                  <button data-disconnect="account1" class="btn ghost" type="button">Disconnect</button>
+                </div>
+                <div class="stage-body">
+                  <p id="pairing1" class="code-line"></p>
+                  <img id="qr1" class="qr hidden" alt="QR akun 1" />
+                  <p id="error1" class="error-text"></p>
+                </div>
+              </div>
+
+              <div class="stage-card panel glass" id="accountCard2">
+                <div class="stage-top">
+                  <div>
+                    <div class="stage-tag">Akun 2</div>
+                    <h3>Akun pengirim kedua</h3>
+                  </div>
+                  <span class="status-chip off" id="badge2">idle</span>
+                </div>
+                <div class="stage-actions">
+                  <div class="actions two-only">
+                    <button data-connect="account2" data-method="pairing" class="btn primary" type="button">Connect Pairing</button>
+                    <button data-connect="account2" data-method="qr" class="btn muted" type="button">Connect QR</button>
+                  </div>
+                  <button data-disconnect="account2" class="btn ghost" type="button">Disconnect</button>
+                </div>
+                <div class="stage-body">
+                  <p id="pairing2" class="code-line"></p>
+                  <img id="qr2" class="qr hidden" alt="QR akun 2" />
+                  <p id="error2" class="error-text"></p>
+                </div>
+              </div>
+            </section>
+          </section>
+
+          <section class="section">
+            <div class="section-head">
+              <div>
+                <h2>Live Execution Feed</h2>
+                <p class="section-copy">Pantau aktivitas bot, jeda, connect, dan error tanpa pindah halaman.</p>
+              </div>
+              <div class="feed-meta"><span>SYS_TERMINAL_OUT</span></div>
+            </div>
+            <div class="panel terminal">
+              <div class="terminal-bar">
+                <span>&gt; WABOT_RUNTIME_LOG</span>
+                <span id="botStatusMini">live feed</span>
+              </div>
+              <pre id="logBox">Belum ada log.</pre>
+            </div>
+          </section>
+        </main>
+      </section>
+    </main>
+
+    <div id="toast" class="toast hidden"></div>
+    <script src="/app.js"></script>
+  </body>
+  </html>

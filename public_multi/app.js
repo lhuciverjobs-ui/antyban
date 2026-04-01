@@ -1,0 +1,236 @@
+const state = {
+  token: localStorage.getItem("wa_multi_token") || "",
+  configEditingUntil: 0,
+};
+const authCard = document.getElementById("authCard");
+const appCard = document.getElementById("appCard");
+const toast = document.getElementById("toast");
+const loginForm = document.getElementById("loginForm");
+const registerForm = document.getElementById("registerForm");
+const loginTab = document.getElementById("loginTab");
+const registerTab = document.getElementById("registerTab");
+
+function notify(message, error = false) {
+  toast.textContent = message;
+  toast.className = `toast ${error ? "error" : ""}`;
+  setTimeout(() => toast.className = "toast hidden", 2600);
+}
+
+async function api(url, options = {}) {
+  const response = await fetch(url, {
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...(state.token ? { "x-auth-token": state.token } : {}),
+      ...(options.headers || {}),
+    },
+  });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || "Request gagal.");
+  return data;
+}
+
+function logoutLocal() {
+  state.token = "";
+  localStorage.removeItem("wa_multi_token");
+  appCard.classList.add("hidden");
+  authCard.classList.remove("hidden");
+  document.body.classList.remove("dashboard-body");
+  showAuthTab("login");
+}
+
+function showAuthTab(mode) {
+  const loginMode = mode === "login";
+  loginForm.classList.toggle("hidden", !loginMode);
+  registerForm.classList.toggle("hidden", loginMode);
+  loginTab.classList.toggle("active", loginMode);
+  registerTab.classList.toggle("active", !loginMode);
+}
+
+function wirePasswordToggle(buttonId, inputId) {
+  const button = document.getElementById(buttonId);
+  const input = document.getElementById(inputId);
+  button.addEventListener("click", () => {
+    const reveal = input.type === "password";
+    input.type = reveal ? "text" : "password";
+    button.textContent = reveal ? "Hide" : "Show";
+  });
+}
+
+function fillConfig(config) {
+  const form = document.getElementById("configForm");
+  const active = document.activeElement;
+  const isEditing = Date.now() < state.configEditingUntil || form.contains(active);
+  if (isEditing) return;
+
+  form.account1Label.value = config.account1.label || "";
+  form.account1Phone.value = config.account1.phone || "";
+  form.account2Label.value = config.account2.label || "";
+  form.account2Phone.value = config.account2.phone || "";
+  form.intervalMinSec.value = config.intervalMinSec ?? 10;
+  form.intervalMaxSec.value = config.intervalMaxSec ?? 20;
+}
+
+function markConfigEditing() {
+  state.configEditingUntil = Date.now() + 15000;
+}
+
+function renderAccount(key, data) {
+  const suffix = key === "account1" ? "1" : "2";
+  document.getElementById(`status${suffix}`).textContent = data.status;
+  const badge = document.getElementById(`badge${suffix}`);
+  badge.textContent = data.status;
+  badge.className = `status-chip ${data.status === "ready" ? "on" : "off"}`;
+  document.getElementById(`pairing${suffix}`).textContent = data.pairingCode ? `Pairing code: ${data.pairingCode}` : "";
+  document.getElementById(`error${suffix}`).textContent = data.lastError || "";
+  const qr = document.getElementById(`qr${suffix}`);
+  if (data.qrDataUrl) {
+    qr.src = data.qrDataUrl;
+    qr.classList.remove("hidden");
+  } else {
+    qr.classList.add("hidden");
+    qr.removeAttribute("src");
+  }
+}
+
+function render(payload) {
+  authCard.classList.add("hidden");
+  appCard.classList.remove("hidden");
+  document.body.classList.add("dashboard-body");
+  document.getElementById("welcomeText").textContent = payload.user.username;
+  const botText = payload.bot.running ? "jalan" : "mati";
+  document.getElementById("botStatus").textContent = botText;
+  document.getElementById("botStatusBadge").textContent = payload.bot.running ? "bot online" : "bot offline";
+  document.getElementById("botStatusBadge").className = `status-chip ${payload.bot.running ? "on" : "off"}`;
+  document.getElementById("botStatusMini").textContent = payload.bot.running ? "bot online" : "live feed";
+  document.getElementById("logBox").textContent = (payload.logs || []).join("\n") || "Belum ada log.";
+  fillConfig(payload.user.config);
+  renderAccount("account1", payload.accounts.account1);
+  renderAccount("account2", payload.accounts.account2);
+}
+
+async function refresh(silent = false) {
+  if (!state.token) return;
+  try {
+    render(await api("/api/dashboard", { method: "GET" }));
+  } catch (error) {
+    if (!silent) notify(error.message, true);
+    logoutLocal();
+  }
+}
+
+registerForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const form = new FormData(event.currentTarget);
+  try {
+    await api("/api/register", {
+      method: "POST",
+      body: JSON.stringify({ username: form.get("username"), password: form.get("password") }),
+    });
+    notify("User berhasil dibuat.");
+    event.currentTarget.reset();
+    showAuthTab("login");
+  } catch (error) {
+    notify(error.message, true);
+  }
+});
+
+loginForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const form = new FormData(event.currentTarget);
+  try {
+    const data = await api("/api/login", {
+      method: "POST",
+      body: JSON.stringify({ username: form.get("username"), password: form.get("password") }),
+    });
+    state.token = data.token;
+    localStorage.setItem("wa_multi_token", data.token);
+    await refresh(true);
+    notify("Login berhasil.");
+    event.currentTarget.reset();
+  } catch (error) {
+    notify(error.message, true);
+  }
+});
+
+document.getElementById("configForm").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  state.configEditingUntil = 0;
+  const form = new FormData(event.currentTarget);
+  const body = {
+    account1: { label: form.get("account1Label"), phone: form.get("account1Phone") },
+    account2: { label: form.get("account2Label"), phone: form.get("account2Phone") },
+    intervalMinSec: Number(form.get("intervalMinSec")),
+    intervalMaxSec: Number(form.get("intervalMaxSec")),
+  };
+  try {
+    render(await api("/api/config", { method: "POST", body: JSON.stringify(body) }));
+    notify("Konfigurasi disimpan.");
+  } catch (error) {
+    notify(error.message, true);
+  }
+});
+
+document.querySelectorAll("[data-connect]").forEach((button) => {
+  button.addEventListener("click", async () => {
+    try {
+      render(await api("/api/connect", {
+        method: "POST",
+        body: JSON.stringify({ accountKey: button.dataset.connect, method: button.dataset.method }),
+      }));
+      notify(`Proses ${button.dataset.connect} dimulai.`);
+    } catch (error) {
+      notify(error.message, true);
+    }
+  });
+});
+
+document.querySelectorAll("[data-disconnect]").forEach((button) => {
+  button.addEventListener("click", async () => {
+    try {
+      render(await api("/api/disconnect", {
+        method: "POST",
+        body: JSON.stringify({ accountKey: button.dataset.disconnect }),
+      }));
+      notify(`${button.dataset.disconnect} diputus.`);
+    } catch (error) {
+      notify(error.message, true);
+    }
+  });
+});
+
+document.getElementById("startBotBtn").addEventListener("click", async () => {
+  try {
+    render(await api("/api/bot/start", { method: "POST" }));
+    notify("Bot dijalankan.");
+  } catch (error) {
+    notify(error.message, true);
+  }
+});
+
+document.getElementById("stopBotBtn").addEventListener("click", async () => {
+  try {
+    render(await api("/api/bot/stop", { method: "POST" }));
+    notify("Bot dihentikan.");
+  } catch (error) {
+    notify(error.message, true);
+  }
+});
+
+document.getElementById("refreshBtn").addEventListener("click", () => refresh());
+
+document.getElementById("logoutBtn").addEventListener("click", async () => {
+  try { await api("/api/logout", { method: "POST" }); } catch {}
+  logoutLocal();
+  notify("Logout berhasil.");
+});
+
+loginTab.addEventListener("click", () => showAuthTab("login"));
+registerTab.addEventListener("click", () => showAuthTab("register"));
+wirePasswordToggle("toggleLoginPassword", "loginPassword");
+wirePasswordToggle("toggleRegisterPassword", "registerPassword");
+document.getElementById("configForm").addEventListener("input", markConfigEditing);
+document.getElementById("configForm").addEventListener("focusin", markConfigEditing);
+
+setInterval(() => refresh(true), 5000);
+refresh(true);

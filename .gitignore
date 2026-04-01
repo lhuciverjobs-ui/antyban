@@ -1,0 +1,5 @@
+node_modules/
+.wwebjs_multi_auth/
+multi_user_data/
+.env
+npm-debug.log*

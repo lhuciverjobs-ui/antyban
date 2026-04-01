@@ -1,0 +1,106 @@
+# Format: [AKUN1] untuk pesan Akun 1, [AKUN2] untuk pesan Akun 2
+# Baris diawali # adalah komentar, diabaikan
+# Pisahkan tiap pesan dengan baris baru
+# Kamu bebas tambah, edit, atau hapus pesan di sini
+
+[AKUN1]
+Halo, apa kabar?
+Lagi ngapain sekarang?
+Udah makan belum?
+Cuaca hari ini gimana di sana?
+Lagi sibuk gak?
+Eh btw, kamu tau gak berita terbaru?
+Jangan lupa istirahat ya!
+Semangat terus!
+Btw nanti kita bisa ketemu gak?
+Oke deh, nanti kabarin aku ya
+Wah udah lama banget gak ngobrol nih
+Gimana kerjaannya?
+Santai dulu yuk, jangan terlalu stress
+Udah punya rencana liburan belum?
+Eh kamu masih suka makan sushi gak?
+Tadi pagi kamu sarapan apa?
+Lagi dengerin musik apa sekarang?
+Eh ngingetin, jangan lupa minum air putih ya
+Kamu udah tidur cukup semalam?
+Btw film terbaru yang kamu tonton apa?
+Eh gimana kabar keluargamu?
+Weekend ini ada rencana kemana gak?
+Kamu lagi di rumah atau lagi keluar?
+Btw tadi macet gak di jalan?
+Eh kamu udah coba restoran baru yang di deket kantor itu belum?
+Lagi ngerjain apa nih?
+Kamu udah olahraga hari ini belum?
+Wah aku lagi kangen ngobrol sama kamu nih
+Eh btw happy mood gak hari ini?
+Lagi pingin makan apa sekarang?
+Tadi abis dari mana?
+Btw kamu udah bayar tagihan listrik bulan ini belum?
+Eh ada yang mau aku ceritain nih, ntar ya
+Kamu lagi charging HP gak? Baterai kamu berapa persen nih
+Hmm tadi aku liat sesuatu yang lucu, ntar aku ceritain
+Btw gimana progres kerjaan kamu yang kemarin itu?
+Eh kamu suka gak sama cuaca hujan?
+Lagi nonton apa sekarang?
+Kamu udah cek email belum?
+Btw aku baru beli sesuatu yang keren nih, penasaran gak?
+Eh nanti malem mau ngapain?
+Kamu lebih suka kopi apa teh?
+Btw aku lagi bosen banget nih hehe
+Eh gimana mood kamu hari ini?
+Kamu suka traveling gak?
+Btw lagi ada promo menarik nih, kamu tertarik?
+Eh kamu udah makan siang belum?
+Hari ini produktif gak?
+Btw aku lagi dengerin playlist baru nih, enak banget
+
+[AKUN2]
+Baik baik aja, makasih! Kamu gimana?
+Lagi santai nih, biasa aja
+Udah dong, tadi makan siang
+Lumayan cerah, enak buat jalan-jalan
+Gak terlalu, kenapa emangnya?
+Oh iya? Cerita dong!
+Haha oke makasih remindernya
+Iya nih, makasih semangatnya!
+Bisa aja, ntar konfirmasi dulu ya
+Siap, nanti aku kabarin!
+Haha iya beneran deh, kangen juga
+Alhamdulillah lancar, lagi banyak deadline nih
+Hehe iya bener, udah minum air putih belom?
+Belum ada rencana, kamu?
+Masih dong! Kamu mau ngajak makan?
+Sarapan nasi goreng, biasa aja hehe
+Lagi dengerin lo-fi, enak buat fokus
+Haha baru inget, makasih ya
+Lumayan cukup, kamu gimana?
+Terakhir nonton yang action gitu, seru
+Pada sehat semua, makasih nanya
+Belum ada rencana, mungkin di rumah aja
+Lagi di rumah nih, mager keluar
+Tadi lumayan macet, bikin lama
+Belum, kata orang sih enak ya?
+Lagi ngerjain laporan nih, agak ribet
+Belum sempet, ntar deh habis ini
+Haha iya juga aku kangen ngobrol
+Lumayan oke hari ini, alhamdulillah
+Lagi pingin bakso nih, kamu?
+Tadi dari mini market, beli cemilan
+Eh iya lupa, ntar langsung bayar
+Wah serius? Cerita dong ntar!
+Baterai aku 30% nih, hampir abis
+Haha penasaran banget, cerita dong!
+Lagi stuck di satu bagian nih, ribet
+Suka banget, adem rasanya
+Lagi rerun series lama, udah tau endingnya tapi tetep nonton
+Belum, ntar deh sebentar lagi
+Wah serius? Apaan tuh?
+Kayaknya mau rebahan aja di rumah
+Teh hangat dong, lebih cozy
+Haha aku juga, ngobrol sama kamu obatnya
+Lumayan oke, semoga makin baik
+Pengen banget, tapi budget lagi tipis haha
+Udah nih, tadi makan nasi padang
+Lumayan, berhasil beresin beberapa task
+Wah promo apaan? Cerita!
+Lagi dengerin yang slow nih, cocok buat mood hari ini
