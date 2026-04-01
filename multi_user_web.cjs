@@ -337,17 +337,16 @@ async function connectAccount(user, key, method) {
   if (!phone) throw new Error(`Nomor ${cfg.label} belum diisi.`);
 
   const current = rt.accounts[key];
-  const reusableStatuses = new Set(["awaiting_scan", "authenticated", "ready"]);
   if (current.client) {
     const samePhone = current.phone === phone;
-    const reusable = samePhone && reusableStatuses.has(current.status);
-    if (!reusable) {
-      log(user.id, `${cfg.label} reset client lama sebelum connect baru.`);
-      await disconnectAccount(user.id, key);
-    } else {
+    const reusable = samePhone && current.status === "ready";
+    if (reusable) {
       log(user.id, `${cfg.label} masih aktif, lanjut pakai sesi connect yang ada.`);
       return;
     }
+
+    log(user.id, `${cfg.label} reset client lama sebelum connect baru.`);
+    await disconnectAccount(user.id, key);
   }
 
   const client = makeClient(user.id, key, phone);
