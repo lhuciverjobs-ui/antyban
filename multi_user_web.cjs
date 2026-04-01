@@ -258,6 +258,20 @@ function blankAccount() {
   return { client: null, phone: null, status: "idle", method: null, qrDataUrl: null, pairingCode: null, lastError: null };
 }
 
+function getSessionDir(userId, key, phone) {
+  if (!phone) return null;
+  return path.join(AUTH_DIR, userId, `session-${key}_${formatNumber(phone)}`);
+}
+
+function removeSessionDir(userId, key, phone) {
+  const sessionDir = getSessionDir(userId, key, phone);
+  if (sessionDir && fs.existsSync(sessionDir)) {
+    fs.rmSync(sessionDir, { recursive: true, force: true });
+    return true;
+  }
+  return false;
+}
+
 function log(userId, message) {
   const rt = runtime(userId);
   rt.logs.unshift(`[${new Date().toLocaleString("id-ID")}] ${message}`);
@@ -291,9 +305,11 @@ function dashboard(user) {
 async function disconnectAccount(userId, key) {
   const rt = runtime(userId);
   const current = rt.accounts[key];
+  const currentPhone = current.phone;
   if (current.client) {
     try { await current.client.destroy(); } catch {}
   }
+  removeSessionDir(userId, key, currentPhone);
   rt.accounts[key] = blankAccount();
 }
 
