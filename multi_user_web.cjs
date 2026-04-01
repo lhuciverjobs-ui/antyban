@@ -87,6 +87,10 @@ function chatId(phone) {
   return `${formatNumber(phone)}@c.us`;
 }
 
+function sessionId(phone) {
+  return `sesi_${formatNumber(phone)}`;
+}
+
 function withTimeout(promise, ms, label) {
   let timer = null;
   return Promise.race([
@@ -260,7 +264,7 @@ function blankAccount() {
 
 function getSessionDir(userId, key, phone) {
   if (!phone) return null;
-  return path.join(AUTH_DIR, userId, `session-${key}_${formatNumber(phone)}`);
+  return path.join(AUTH_DIR, userId, `session-${sessionId(phone)}`);
 }
 
 function removeSessionDir(userId, key, phone) {
@@ -325,7 +329,7 @@ function makeClient(userId, key, phone) {
     puppeteer.executablePath = executablePath;
   }
   return new Client({
-    authStrategy: new LocalAuth({ clientId: `${key}_${formatNumber(phone)}`, dataPath: dir }),
+    authStrategy: new LocalAuth({ clientId: sessionId(phone), dataPath: dir }),
     puppeteer,
   });
 }
