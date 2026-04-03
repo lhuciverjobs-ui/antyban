@@ -259,7 +259,19 @@ function runtime(userId) {
 }
 
 function blankAccount() {
-  return { client: null, phone: null, status: "idle", method: null, qrDataUrl: null, pairingCode: null, lastError: null };
+  return {
+    client: null,
+    phone: null,
+    status: "idle",
+    method: null,
+    preferredMethod: "pairing",
+    qrDataUrl: null,
+    pairingCode: null,
+    lastError: null,
+    reconnectTimer: null,
+    manualDisconnect: false,
+    reconnectAttempts: 0,
+  };
 }
 
 function getSessionDir(userId, key, phone) {
@@ -286,6 +298,7 @@ function accountState(acc) {
   return {
     status: acc.status,
     method: acc.method,
+    preferredMethod: acc.preferredMethod,
     qrDataUrl: acc.qrDataUrl,
     pairingCode: acc.pairingCode,
     lastError: acc.lastError,
@@ -309,6 +322,11 @@ function dashboard(user) {
 async function disconnectAccount(userId, key) {
   const rt = runtime(userId);
   const current = rt.accounts[key];
+  current.manualDisconnect = true;
+  if (current.reconnectTimer) {
+    clearTimeout(current.reconnectTimer);
+    current.reconnectTimer = null;
+  }
   const currentPhone = current.phone;
   if (current.client) {
     try { await current.client.destroy(); } catch {}
@@ -317,7 +335,34 @@ async function disconnectAccount(userId, key) {
   rt.accounts[key] = blankAccount();
 }
 
-function makeClient(userId, key, phone) {
+function scheduleReconnect(userId, key, method) {
+  const rt = runtime(userId);
+  const acc = rt.accounts[key];
+  if (acc.manualDisconnect) return;
+  if (acc.reconnectTimer) clearTimeout(acc.reconnectTimer);
+
+  const nextMethod = method || acc.preferredMethod || "pairing";
+  const delay = Math.min(15000, 3000 + (acc.reconnectAttempts || 0) * 2000);
+  acc.reconnectAttempts = (acc.reconnectAttempts || 0) + 1;
+  acc.status = "reconnecting";
+  acc.lastError = `Mencoba reconnect otomatis dalam ${Math.round(delay / 1000)} detik...`;
+
+  acc.reconnectTimer = setTimeout(async () => {
+    acc.reconnectTimer = null;
+    try {
+      const user = getUserById(userId);
+      if (!user) return;
+      log(userId, `${user.config[key].label} auto reconnect (${nextMethod}).`);
+      await connectAccount(user, key, nextMethod);
+    } catch (err) {
+      const latest = runtime(userId).accounts[key];
+      latest.lastError = err.message;
+      scheduleReconnect(userId, key, nextMethod);
+    }
+  }, delay);
+}
+
+function makeClient(userId, key, phone, method = null) {
   const dir = path.join(AUTH_DIR, userId);
   ensureDir(dir);
   const executablePath = process.env.PUPPETEER_EXECUTABLE_PATH || process.env.CHROME_PATH;
@@ -328,10 +373,57 @@ function makeClient(userId, key, phone) {
   if (executablePath) {
     puppeteer.executablePath = executablePath;
   }
-  return new Client({
+  const clientOptions = {
     authStrategy: new LocalAuth({ clientId: sessionId(phone), dataPath: dir }),
     puppeteer,
-  });
+  };
+
+  if (method === "pairing") {
+    clientOptions.pairWithPhoneNumber = {
+      phoneNumber: phone,
+      showNotification: true,
+      intervalMs: 180000,
+    };
+  }
+
+  return new Client(clientOptions);
+}
+
+async function verifyStoredSession(userId, key, phone) {
+  const sessionDir = getSessionDir(userId, key, phone);
+  if (!sessionDir || !fs.existsSync(sessionDir)) {
+    return { status: "missing", detail: "folder sesi tidak ditemukan" };
+  }
+
+  const client = makeClient(userId, key, phone, null);
+
+  try {
+    return await new Promise((resolve) => {
+      let settled = false;
+      let timeout = null;
+
+      const finish = async (result) => {
+        if (settled) return;
+        settled = true;
+        if (timeout) clearTimeout(timeout);
+        try { await client.destroy(); } catch {}
+        resolve(result);
+      };
+
+      timeout = setTimeout(() => {
+        finish({ status: "inactive", detail: "timeout saat verifikasi sesi" });
+      }, 45000);
+
+      client.on("ready", () => finish({ status: "active", detail: "sesi masih valid" }));
+      client.on("qr", () => finish({ status: "inactive", detail: "perlu login ulang" }));
+      client.on("auth_failure", (msg) => finish({ status: "inactive", detail: msg || "auth gagal" }));
+      client.on("disconnected", (reason) => finish({ status: "inactive", detail: reason || "terputus" }));
+      client.initialize().catch((err) => finish({ status: "inactive", detail: err.message || String(err) }));
+    });
+  } catch (err) {
+    try { await client.destroy(); } catch {}
+    return { status: "inactive", detail: err.message || String(err) };
+  }
 }
 
 async function connectAccount(user, key, method) {
@@ -353,24 +445,48 @@ async function connectAccount(user, key, method) {
     await disconnectAccount(user.id, key);
   }
 
-  const client = makeClient(user.id, key, phone);
-  rt.accounts[key] = { client, phone, status: "initializing", method, qrDataUrl: null, pairingCode: null, lastError: null };
-  log(user.id, `${cfg.label} mulai connect (${method}).`);
+  const sessionProbe = await verifyStoredSession(user.id, key, phone);
+  const effectiveMethod = sessionProbe.status === "active" ? null : method;
+
+  if (sessionProbe.status === "active") {
+    log(user.id, `${cfg.label} pakai sesi tersimpan yang masih valid.`);
+  } else if (sessionProbe.status === "inactive") {
+    removeSessionDir(user.id, key, phone);
+    log(user.id, `${cfg.label} sesi lama tidak valid, lanjut login ulang (${method}).`);
+  }
+
+  const client = makeClient(user.id, key, phone, effectiveMethod);
+  rt.accounts[key] = {
+    client,
+    phone,
+    status: "initializing",
+    method: effectiveMethod,
+    preferredMethod: method || current.preferredMethod || "pairing",
+    qrDataUrl: null,
+    pairingCode: null,
+    lastError: effectiveMethod ? null : sessionProbe.detail,
+    reconnectTimer: null,
+    manualDisconnect: false,
+    reconnectAttempts: 0,
+  };
+  log(user.id, `${cfg.label} mulai connect (${effectiveMethod || "restore_session"}).`);
+
+  client.on("code", (code) => {
+    const acc = runtime(user.id).accounts[key];
+    acc.status = "awaiting_scan";
+    acc.method = "pairing";
+    acc.preferredMethod = "pairing";
+    acc.pairingCode = code;
+    acc.qrDataUrl = null;
+    acc.lastError = null;
+  });
 
   client.on("qr", async (qr) => {
     const acc = runtime(user.id).accounts[key];
     acc.status = "awaiting_scan";
-    acc.method = method;
-    if (method === "pairing") {
-      try {
-        acc.pairingCode = await client.requestPairingCode(phone);
-        acc.qrDataUrl = null;
-        acc.lastError = null;
-      } catch (e) {
-        acc.lastError = `Pairing code gagal, pakai QR fallback: ${e.message}`;
-        try { acc.qrDataUrl = await QRCode.toDataURL(qr, { width: 280, margin: 1 }); } catch (qrErr) { acc.lastError = qrErr.message; }
-      }
-    } else {
+    acc.method = effectiveMethod;
+    if (effectiveMethod && effectiveMethod !== "pairing") {
+      acc.preferredMethod = effectiveMethod;
       try {
         acc.qrDataUrl = await QRCode.toDataURL(qr, { width: 280, margin: 1 });
         acc.pairingCode = null;
@@ -379,10 +495,37 @@ async function connectAccount(user, key, method) {
       }
     }
   });
-  client.on("authenticated", () => { runtime(user.id).accounts[key].status = "authenticated"; log(user.id, `${cfg.label} authenticated.`); });
-  client.on("ready", () => { const acc = runtime(user.id).accounts[key]; acc.status = "ready"; acc.qrDataUrl = null; acc.lastError = null; log(user.id, `${cfg.label} ready.`); });
-  client.on("auth_failure", (msg) => { const acc = runtime(user.id).accounts[key]; acc.status = "auth_failure"; acc.lastError = msg; log(user.id, `${cfg.label} auth gagal: ${msg}`); });
-  client.on("disconnected", (reason) => { const acc = runtime(user.id).accounts[key]; acc.status = "disconnected"; acc.lastError = reason; acc.client = null; log(user.id, `${cfg.label} terputus: ${reason}`); });
+  client.on("authenticated", () => {
+    const acc = runtime(user.id).accounts[key];
+    acc.status = "authenticated";
+    log(user.id, `${cfg.label} authenticated.`);
+  });
+  client.on("ready", () => {
+    const acc = runtime(user.id).accounts[key];
+    acc.status = "ready";
+    acc.qrDataUrl = null;
+    acc.pairingCode = null;
+    acc.lastError = null;
+    acc.reconnectAttempts = 0;
+    log(user.id, `${cfg.label} ready.`);
+  });
+  client.on("auth_failure", (msg) => {
+    const acc = runtime(user.id).accounts[key];
+    acc.status = "auth_failure";
+    acc.lastError = msg;
+    log(user.id, `${cfg.label} auth gagal: ${msg}`);
+  });
+  client.on("disconnected", (reason) => {
+    const acc = runtime(user.id).accounts[key];
+    const manual = acc.manualDisconnect;
+    acc.status = "disconnected";
+    acc.lastError = reason;
+    acc.client = null;
+    log(user.id, `${cfg.label} terputus: ${reason}`);
+    if (!manual) {
+      scheduleReconnect(user.id, key, acc.preferredMethod || "pairing");
+    }
+  });
   client.initialize().catch((e) => { const acc = runtime(user.id).accounts[key]; acc.status = "error"; acc.lastError = e.message; acc.client = null; log(user.id, `${cfg.label} gagal connect: ${e.message}`); });
 }
 
