@@ -3,6 +3,8 @@ const state = {
   configEditingUntil: 0,
   qrModalAccountKey: null,
   fastRefreshUntil: 0,
+  dashboardStream: null,
+  streamRetryTimer: null,
 };
 const authCard = document.getElementById("authCard");
 const appCard = document.getElementById("appCard");
@@ -36,7 +38,45 @@ async function api(url, options = {}) {
   return data;
 }
 
+function closeDashboardStream() {
+  if (state.streamRetryTimer) {
+    clearTimeout(state.streamRetryTimer);
+    state.streamRetryTimer = null;
+  }
+  if (state.dashboardStream) {
+    state.dashboardStream.close();
+    state.dashboardStream = null;
+  }
+}
+
+function scheduleFallbackRefresh(delay = 4000) {
+  if (state.streamRetryTimer || !state.token) return;
+  state.streamRetryTimer = setTimeout(async () => {
+    state.streamRetryTimer = null;
+    await refresh(true);
+    openDashboardStream();
+  }, delay);
+}
+
+function openDashboardStream() {
+  if (!state.token || state.dashboardStream) return;
+  const stream = new EventSource(`/api/events?token=${encodeURIComponent(state.token)}`);
+  state.dashboardStream = stream;
+
+  stream.addEventListener("dashboard", (event) => {
+    try {
+      render(JSON.parse(event.data));
+    } catch {}
+  });
+
+  stream.onerror = async () => {
+    closeDashboardStream();
+    scheduleFallbackRefresh(state.fastRefreshUntil > Date.now() ? 1200 : 5000);
+  };
+}
+
 function logoutLocal() {
+  closeDashboardStream();
   state.token = "";
   localStorage.removeItem("wa_multi_token");
   appCard.classList.add("hidden");
@@ -164,7 +204,9 @@ function render(payload) {
 async function refresh(silent = false) {
   if (!state.token) return;
   try {
-    render(await api("/api/dashboard", { method: "GET" }));
+    const payload = await api("/api/dashboard", { method: "GET" });
+    render(payload);
+    openDashboardStream();
   } catch (error) {
     if (!silent) notify(error.message, true);
     logoutLocal();
@@ -200,6 +242,7 @@ loginForm.addEventListener("submit", async (event) => {
     state.token = data.token;
     localStorage.setItem("wa_multi_token", data.token);
     await refresh(true);
+    openDashboardStream();
     notify("Login berhasil.");
     formEl.reset();
   } catch (error) {
@@ -301,10 +344,21 @@ wirePasswordToggle("toggleRegisterPassword", "registerPassword");
 document.getElementById("configForm").addEventListener("input", markConfigEditing);
 document.getElementById("configForm").addEventListener("focusin", markConfigEditing);
 
-setInterval(() => refresh(true), 1200);
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden && state.token) {
+    refresh(true);
+  }
+});
+
 setInterval(() => {
+  if (!state.token || document.hidden) return;
+  if (!state.dashboardStream) {
+    refresh(true);
+    return;
+  }
   if (Date.now() < state.fastRefreshUntil) {
     refresh(true);
   }
-}, 350);
+}, 15000);
+
 refresh(true);

@@ -3,63 +3,33 @@ const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
 const { URL } = require("url");
-const QRCode = require("qrcode");
-const { Client, LocalAuth } = require("whatsapp-web.js");
+const { fork } = require("child_process");
 
 const HOST = process.env.HOST || "0.0.0.0";
 const PORT = Number(process.env.PORT || 3000);
 const ROOT = __dirname;
 const DATA_DIR = path.join(ROOT, "multi_user_data");
 const USERS_FILE = path.join(DATA_DIR, "users.json");
-const AUTH_DIR = path.join(ROOT, ".wwebjs_multi_auth");
 const PUBLIC_DIR = path.join(ROOT, "public_multi");
+const WORKER_FILE = path.join(ROOT, "web_user_worker.cjs");
 const MESSAGES_FILE = path.join(ROOT, "pesan.txt");
+const AUTH_DIR = path.join(ROOT, ".wwebjs_multi_auth");
 
 const TOKENS = new Map();
-const RUNTIME = new Map();
+const STREAMS = new Map();
+const REFRESH_QUEUE = new Map();
+const RATE_LIMITS = new Map();
+const WORKERS = new Map();
 
 boot();
-registerProcessGuards();
 
 function boot() {
   ensureDir(DATA_DIR);
-  ensureDir(AUTH_DIR);
   ensureDir(PUBLIC_DIR);
-  if (!fs.existsSync(USERS_FILE)) fs.writeFileSync(USERS_FILE, JSON.stringify({ users: [] }, null, 2));
-}
-
-function registerProcessGuards() {
-  process.on("unhandledRejection", (reason) => {
-    if (isIgnorableWhatsAppError(reason)) {
-      console.warn("[wa-guard] Ignored transient rejection:", extractErrorMessage(reason));
-      return;
-    }
-    console.error("[unhandledRejection]", reason);
-  });
-
-  process.on("uncaughtException", (error) => {
-    if (isIgnorableWhatsAppError(error)) {
-      console.warn("[wa-guard] Ignored transient exception:", extractErrorMessage(error));
-      return;
-    }
-    console.error("[uncaughtException]", error);
-  });
-}
-
-function extractErrorMessage(error) {
-  if (!error) return "";
-  if (typeof error === "string") return error;
-  return String(error.message || error);
-}
-
-function isIgnorableWhatsAppError(error) {
-  const message = extractErrorMessage(error);
-  return [
-    "Execution context was destroyed",
-    "Cannot find context with specified id",
-    "Navigating frame was detached",
-    "Protocol error (Runtime.callFunctionOn)",
-  ].some((text) => message.includes(text));
+  ensureDir(AUTH_DIR);
+  if (!fs.existsSync(USERS_FILE)) {
+    fs.writeFileSync(USERS_FILE, JSON.stringify({ users: [] }, null, 2));
+  }
 }
 
 function ensureDir(dir) {
@@ -78,66 +48,6 @@ function uid(prefix) {
   return `${prefix}_${crypto.randomBytes(10).toString("hex")}`;
 }
 
-function formatNumber(phone = "") {
-  const digits = String(phone).replace(/\D/g, "");
-  return digits.startsWith("0") ? `62${digits.slice(1)}` : digits;
-}
-
-function chatId(phone) {
-  return `${formatNumber(phone)}@c.us`;
-}
-
-function sessionId(phone) {
-  return `sesi_${formatNumber(phone)}`;
-}
-
-function withTimeout(promise, ms, label) {
-  let timer = null;
-  return Promise.race([
-    promise.finally(() => {
-      if (timer) clearTimeout(timer);
-    }),
-    new Promise((_, reject) => {
-      timer = setTimeout(() => reject(new Error(`${label} timeout setelah ${Math.round(ms / 1000)} detik.`)), ms);
-    }),
-  ]);
-}
-
-function readMessagesFromFile(filePath) {
-  const defaultMessages1 = ["Halo!", "Apa kabar?", "Lagi ngapain?"];
-  const defaultMessages2 = ["Baik, makasih!", "Santai nih.", "Gak ngapa-ngapain."];
-
-  if (!fs.existsSync(filePath)) {
-    return { messages1: defaultMessages1, messages2: defaultMessages2 };
-  }
-
-  const lines = fs.readFileSync(filePath, "utf8").split("\n");
-  const messages1 = [];
-  const messages2 = [];
-  let section = null;
-
-  for (const line of lines) {
-    const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith("#")) continue;
-    if (trimmed === "[AKUN1]") {
-      section = "account1";
-      continue;
-    }
-    if (trimmed === "[AKUN2]") {
-      section = "account2";
-      continue;
-    }
-    if (section === "account1") messages1.push(trimmed);
-    else if (section === "account2") messages2.push(trimmed);
-  }
-
-  if (!messages1.length || !messages2.length) {
-    return { messages1: defaultMessages1, messages2: defaultMessages2 };
-  }
-
-  return { messages1, messages2 };
-}
-
 function defaults() {
   return {
     account1: { label: "Akun 1", phone: "" },
@@ -147,11 +57,32 @@ function defaults() {
   };
 }
 
+function blankAccount() {
+  return {
+    status: "idle",
+    method: null,
+    preferredMethod: "pairing",
+    qrDataUrl: null,
+    pairingCode: null,
+    lastError: null,
+    phone: null,
+  };
+}
+
+function blankRuntime() {
+  return {
+    accounts: {
+      account1: blankAccount(),
+      account2: blankAccount(),
+    },
+    bot: { running: false },
+    logs: [],
+    worker: { online: false, pid: null, lastError: null },
+  };
+}
+
 function sanitizeConfig(input = {}) {
   const base = defaults();
-  const lines = (value, fallback) => Array.isArray(value)
-    ? value.map((x) => String(x).trim()).filter(Boolean).slice(0, 200)
-    : fallback;
   return {
     account1: {
       label: String(input.account1?.label || base.account1.label).trim() || base.account1.label,
@@ -206,10 +137,16 @@ function updateUser(id, fn) {
 function parse(req) {
   return new Promise((resolve, reject) => {
     let raw = "";
-    req.on("data", (chunk) => raw += chunk);
+    req.on("data", (chunk) => {
+      raw += chunk;
+    });
     req.on("end", () => {
       if (!raw) return resolve({});
-      try { resolve(JSON.parse(raw)); } catch { reject(new Error("JSON tidak valid.")); }
+      try {
+        resolve(JSON.parse(raw));
+      } catch {
+        reject(new Error("JSON tidak valid."));
+      }
     });
     req.on("error", reject);
   });
@@ -223,7 +160,11 @@ function json(res, code, body) {
 function sendFile(res, file) {
   if (!fs.existsSync(file)) return json(res, 404, { error: "File tidak ditemukan." });
   const ext = path.extname(file);
-  const type = ext === ".html" ? "text/html; charset=utf-8" : ext === ".css" ? "text/css; charset=utf-8" : "application/javascript; charset=utf-8";
+  const type = ext === ".html"
+    ? "text/html; charset=utf-8"
+    : ext === ".css"
+      ? "text/css; charset=utf-8"
+      : "application/javascript; charset=utf-8";
   res.writeHead(200, { "Content-Type": type });
   fs.createReadStream(file).pipe(res);
 }
@@ -244,356 +185,230 @@ function auth(req, res) {
   return user;
 }
 
-function runtime(userId) {
-  if (!RUNTIME.has(userId)) {
-    RUNTIME.set(userId, {
-      logs: [],
-      bot: { running: false, stop: false, promise: null },
-      accounts: {
-        account1: blankAccount(),
-        account2: blankAccount(),
-      },
-    });
+function clientIp(req) {
+  return String(
+    req.headers["x-forwarded-for"] ||
+    req.socket?.remoteAddress ||
+    "unknown"
+  ).split(",")[0].trim();
+}
+
+function limit(req, res, key, max, windowMs, message) {
+  const bucketKey = `${key}:${clientIp(req)}`;
+  const now = Date.now();
+  const bucket = RATE_LIMITS.get(bucketKey);
+
+  if (!bucket || bucket.resetAt <= now) {
+    RATE_LIMITS.set(bucketKey, { count: 1, resetAt: now + windowMs });
+    return false;
   }
-  return RUNTIME.get(userId);
-}
 
-function blankAccount() {
-  return {
-    client: null,
-    phone: null,
-    status: "idle",
-    method: null,
-    preferredMethod: "pairing",
-    qrDataUrl: null,
-    pairingCode: null,
-    lastError: null,
-    reconnectTimer: null,
-    manualDisconnect: false,
-    reconnectAttempts: 0,
-  };
-}
-
-function getSessionDir(userId, key, phone) {
-  if (!phone) return null;
-  return path.join(AUTH_DIR, userId, `session-${sessionId(phone)}`);
-}
-
-function removeSessionDir(userId, key, phone) {
-  const sessionDir = getSessionDir(userId, key, phone);
-  if (sessionDir && fs.existsSync(sessionDir)) {
-    fs.rmSync(sessionDir, { recursive: true, force: true });
+  if (bucket.count >= max) {
+    const retryAfter = Math.max(1, Math.ceil((bucket.resetAt - now) / 1000));
+    res.writeHead(429, {
+      "Content-Type": "application/json; charset=utf-8",
+      "Retry-After": String(retryAfter),
+    });
+    res.end(JSON.stringify({ error: message || "Terlalu banyak request." }));
     return true;
   }
+
+  bucket.count += 1;
   return false;
 }
 
-function log(userId, message) {
-  const rt = runtime(userId);
-  rt.logs.unshift(`[${new Date().toLocaleString("id-ID")}] ${message}`);
-  rt.logs = rt.logs.slice(0, 100);
+function streamSet(userId) {
+  if (!STREAMS.has(userId)) STREAMS.set(userId, new Set());
+  return STREAMS.get(userId);
 }
 
-function accountState(acc) {
-  return {
-    status: acc.status,
-    method: acc.method,
-    preferredMethod: acc.preferredMethod,
-    qrDataUrl: acc.qrDataUrl,
-    pairingCode: acc.pairingCode,
-    lastError: acc.lastError,
-    phone: acc.phone,
-  };
+function writeSse(res, event, payload) {
+  res.write(`event: ${event}\n`);
+  res.write(`data: ${JSON.stringify(payload)}\n\n`);
 }
 
 function dashboard(user) {
-  const rt = runtime(user.id);
+  const entry = WORKERS.get(user.id);
+  const runtime = entry?.state || blankRuntime();
   return {
     user: userPublic(user),
-    accounts: {
-      account1: accountState(rt.accounts.account1),
-      account2: accountState(rt.accounts.account2),
-    },
-    bot: { running: rt.bot.running },
-    logs: rt.logs,
+    accounts: runtime.accounts,
+    bot: runtime.bot,
+    logs: runtime.logs,
+    worker: runtime.worker,
   };
 }
 
-async function disconnectAccount(userId, key) {
-  const rt = runtime(userId);
-  const current = rt.accounts[key];
-  current.manualDisconnect = true;
-  if (current.reconnectTimer) {
-    clearTimeout(current.reconnectTimer);
-    current.reconnectTimer = null;
-  }
-  const currentPhone = current.phone;
-  if (current.client) {
-    try { await current.client.destroy(); } catch {}
-  }
-  removeSessionDir(userId, key, currentPhone);
-  rt.accounts[key] = blankAccount();
-}
-
-function scheduleReconnect(userId, key, method) {
-  const rt = runtime(userId);
-  const acc = rt.accounts[key];
-  if (acc.manualDisconnect) return;
-  if (acc.reconnectTimer) clearTimeout(acc.reconnectTimer);
-
-  const nextMethod = method || acc.preferredMethod || "pairing";
-  const delay = Math.min(15000, 3000 + (acc.reconnectAttempts || 0) * 2000);
-  acc.reconnectAttempts = (acc.reconnectAttempts || 0) + 1;
-  acc.status = "reconnecting";
-  acc.lastError = `Mencoba reconnect otomatis dalam ${Math.round(delay / 1000)} detik...`;
-
-  acc.reconnectTimer = setTimeout(async () => {
-    acc.reconnectTimer = null;
+function pushDashboard(userId) {
+  const user = getUserById(userId);
+  if (!user) return;
+  const watchers = STREAMS.get(userId);
+  if (!watchers || !watchers.size) return;
+  const payload = dashboard(user);
+  for (const res of watchers) {
     try {
-      const user = getUserById(userId);
-      if (!user) return;
-      log(userId, `${user.config[key].label} auto reconnect (${nextMethod}).`);
-      await connectAccount(user, key, nextMethod);
-    } catch (err) {
-      const latest = runtime(userId).accounts[key];
-      latest.lastError = err.message;
-      scheduleReconnect(userId, key, nextMethod);
-    }
+      writeSse(res, "dashboard", payload);
+    } catch {}
+  }
+}
+
+function scheduleDashboardRefresh(userId, delay = 250) {
+  if (REFRESH_QUEUE.has(userId)) return;
+  const timer = setTimeout(() => {
+    REFRESH_QUEUE.delete(userId);
+    pushDashboard(userId);
   }, delay);
+  REFRESH_QUEUE.set(userId, timer);
 }
 
-function makeClient(userId, key, phone, method = null) {
-  const dir = path.join(AUTH_DIR, userId);
-  ensureDir(dir);
-  const executablePath = process.env.PUPPETEER_EXECUTABLE_PATH || process.env.CHROME_PATH;
-  const puppeteer = {
-    headless: true,
-    args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage", "--disable-gpu"],
-  };
-  if (executablePath) {
-    puppeteer.executablePath = executablePath;
-  }
-  const clientOptions = {
-    authStrategy: new LocalAuth({ clientId: sessionId(phone), dataPath: dir }),
-    puppeteer,
-  };
+function openDashboardStream(req, res, user) {
+  const watchers = streamSet(user.id);
+  res.writeHead(200, {
+    "Content-Type": "text/event-stream; charset=utf-8",
+    "Cache-Control": "no-cache, no-transform",
+    Connection: "keep-alive",
+    "X-Accel-Buffering": "no",
+  });
+  if (typeof res.flushHeaders === "function") res.flushHeaders();
+  res.write(": connected\n\n");
+  watchers.add(res);
+  writeSse(res, "dashboard", dashboard(user));
 
-  if (method === "pairing") {
-    clientOptions.pairWithPhoneNumber = {
-      phoneNumber: phone,
-      showNotification: true,
-      intervalMs: 180000,
+  const heartbeat = setInterval(() => {
+    try {
+      res.write(": ping\n\n");
+    } catch {}
+  }, 20000);
+
+  req.on("close", () => {
+    clearInterval(heartbeat);
+    watchers.delete(res);
+    if (!watchers.size) STREAMS.delete(user.id);
+  });
+}
+
+function updateWorkerState(userId, patch = {}) {
+  let entry = WORKERS.get(userId);
+  if (!entry) {
+    entry = {
+      child: null,
+      state: blankRuntime(),
+      requests: new Map(),
+      seq: 0,
     };
+    WORKERS.set(userId, entry);
   }
 
-  return new Client(clientOptions);
+  entry.state = {
+    ...entry.state,
+    ...patch,
+    accounts: patch.accounts || entry.state.accounts,
+    bot: patch.bot || entry.state.bot,
+    logs: patch.logs || entry.state.logs,
+    worker: {
+      ...entry.state.worker,
+      ...(patch.worker || {}),
+    },
+  };
+  scheduleDashboardRefresh(userId);
+  return entry;
 }
 
-async function verifyStoredSession(userId, key, phone) {
-  const sessionDir = getSessionDir(userId, key, phone);
-  if (!sessionDir || !fs.existsSync(sessionDir)) {
-    return { status: "missing", detail: "folder sesi tidak ditemukan" };
+function rejectWorkerRequests(entry, message) {
+  for (const pending of entry.requests.values()) {
+    pending.reject(new Error(message));
   }
-
-  const client = makeClient(userId, key, phone, null);
-
-  try {
-    return await new Promise((resolve) => {
-      let settled = false;
-      let timeout = null;
-
-      const finish = async (result) => {
-        if (settled) return;
-        settled = true;
-        if (timeout) clearTimeout(timeout);
-        try { await client.destroy(); } catch {}
-        resolve(result);
-      };
-
-      timeout = setTimeout(() => {
-        finish({ status: "inactive", detail: "timeout saat verifikasi sesi" });
-      }, 45000);
-
-      client.on("ready", () => finish({ status: "active", detail: "sesi masih valid" }));
-      client.on("qr", () => finish({ status: "inactive", detail: "perlu login ulang" }));
-      client.on("auth_failure", (msg) => finish({ status: "inactive", detail: msg || "auth gagal" }));
-      client.on("disconnected", (reason) => finish({ status: "inactive", detail: reason || "terputus" }));
-      client.initialize().catch((err) => finish({ status: "inactive", detail: err.message || String(err) }));
-    });
-  } catch (err) {
-    try { await client.destroy(); } catch {}
-    return { status: "inactive", detail: err.message || String(err) };
-  }
+  entry.requests.clear();
 }
 
-async function connectAccount(user, key, method) {
-  const cfg = user.config[key];
-  const rt = runtime(user.id);
-  const phone = formatNumber(cfg.phone);
-  if (!phone) throw new Error(`Nomor ${cfg.label} belum diisi.`);
+function attachWorkerEvents(userId, child) {
+  child.on("message", (message) => {
+    const entry = WORKERS.get(userId);
+    if (!entry) return;
 
-  const current = rt.accounts[key];
-  if (current.client) {
-    const samePhone = current.phone === phone;
-    const reusable = samePhone && current.status === "ready";
-    if (reusable) {
-      log(user.id, `${cfg.label} masih aktif, lanjut pakai sesi connect yang ada.`);
+    if (message.type === "snapshot") {
+      updateWorkerState(userId, message.snapshot);
       return;
     }
 
-    log(user.id, `${cfg.label} reset client lama sebelum connect baru.`);
-    await disconnectAccount(user.id, key);
-  }
-
-  const sessionProbe = await verifyStoredSession(user.id, key, phone);
-  const effectiveMethod = sessionProbe.status === "active" ? null : method;
-
-  if (sessionProbe.status === "active") {
-    log(user.id, `${cfg.label} pakai sesi tersimpan yang masih valid.`);
-  } else if (sessionProbe.status === "inactive") {
-    removeSessionDir(user.id, key, phone);
-    log(user.id, `${cfg.label} sesi lama tidak valid, lanjut login ulang (${method}).`);
-  }
-
-  const client = makeClient(user.id, key, phone, effectiveMethod);
-  rt.accounts[key] = {
-    client,
-    phone,
-    status: "initializing",
-    method: effectiveMethod,
-    preferredMethod: method || current.preferredMethod || "pairing",
-    qrDataUrl: null,
-    pairingCode: null,
-    lastError: effectiveMethod ? null : sessionProbe.detail,
-    reconnectTimer: null,
-    manualDisconnect: false,
-    reconnectAttempts: 0,
-  };
-  log(user.id, `${cfg.label} mulai connect (${effectiveMethod || "restore_session"}).`);
-
-  client.on("code", (code) => {
-    const acc = runtime(user.id).accounts[key];
-    acc.status = "awaiting_scan";
-    acc.method = "pairing";
-    acc.preferredMethod = "pairing";
-    acc.pairingCode = code;
-    acc.qrDataUrl = null;
-    acc.lastError = null;
-  });
-
-  client.on("qr", async (qr) => {
-    const acc = runtime(user.id).accounts[key];
-    acc.status = "awaiting_scan";
-    acc.method = effectiveMethod;
-    if (effectiveMethod && effectiveMethod !== "pairing") {
-      acc.preferredMethod = effectiveMethod;
-      try {
-        acc.qrDataUrl = await QRCode.toDataURL(qr, { width: 280, margin: 1 });
-        acc.pairingCode = null;
-      } catch (e) {
-        acc.lastError = e.message;
-      }
-    }
-  });
-  client.on("authenticated", () => {
-    const acc = runtime(user.id).accounts[key];
-    acc.status = "authenticated";
-    log(user.id, `${cfg.label} authenticated.`);
-  });
-  client.on("ready", () => {
-    const acc = runtime(user.id).accounts[key];
-    acc.status = "ready";
-    acc.qrDataUrl = null;
-    acc.pairingCode = null;
-    acc.lastError = null;
-    acc.reconnectAttempts = 0;
-    log(user.id, `${cfg.label} ready.`);
-  });
-  client.on("auth_failure", (msg) => {
-    const acc = runtime(user.id).accounts[key];
-    acc.status = "auth_failure";
-    acc.lastError = msg;
-    log(user.id, `${cfg.label} auth gagal: ${msg}`);
-  });
-  client.on("disconnected", (reason) => {
-    const acc = runtime(user.id).accounts[key];
-    const manual = acc.manualDisconnect;
-    acc.status = "disconnected";
-    acc.lastError = reason;
-    acc.client = null;
-    log(user.id, `${cfg.label} terputus: ${reason}`);
-    if (!manual) {
-      scheduleReconnect(user.id, key, acc.preferredMethod || "pairing");
-    }
-  });
-  client.initialize().catch((e) => { const acc = runtime(user.id).accounts[key]; acc.status = "error"; acc.lastError = e.message; acc.client = null; log(user.id, `${cfg.label} gagal connect: ${e.message}`); });
-}
-
-async function sendFrom(user, key, targetPhone, messages) {
-  const sender = runtime(user.id).accounts[key];
-  if (!sender.client || sender.status !== "ready") throw new Error(`${user.config[key].label} belum ready.`);
-  const msg = messages[Math.floor(Math.random() * messages.length)];
-  const targetChatId = chatId(targetPhone);
-  log(user.id, `${user.config[key].label} mencoba kirim ke ${targetPhone}...`);
-  await withTimeout(
-    sender.client.sendMessage(targetChatId, msg),
-    20000,
-    `Kirim ${user.config[key].label}`
-  );
-  log(user.id, `${user.config[key].label} -> ${targetPhone}: ${msg}`);
-}
-
-async function startBot(user) {
-  const rt = runtime(user.id);
-  if (rt.bot.running) throw new Error("Bot sudah jalan.");
-  const { account1, account2, intervalMinSec, intervalMaxSec } = user.config;
-  const { messages1, messages2 } = readMessagesFromFile(MESSAGES_FILE);
-  if (!account1.phone || !account2.phone) throw new Error("Isi dua nomor akun dulu.");
-  if (formatNumber(account1.phone) === formatNumber(account2.phone)) throw new Error("Nomor akun harus berbeda.");
-  if (!messages1.length || !messages2.length) throw new Error("Pesan kedua akun tidak boleh kosong.");
-  if (rt.accounts.account1.status !== "ready" || rt.accounts.account2.status !== "ready") throw new Error("Kedua akun harus ready.");
-
-  rt.bot.running = true;
-  rt.bot.stop = false;
-  log(user.id, "Bot dimulai.");
-  rt.bot.promise = (async () => {
-    let turn = "account1";
-    while (!rt.bot.stop) {
-      let success = false;
-      if (turn === "account1") {
-        success = await sendFrom(user, "account1", account2.phone, messages1)
-          .then(() => true)
-          .catch((e) => {
-            log(user.id, e.message);
-            return false;
-          });
-        if (success) {
-          turn = "account2";
-        }
+    if (message.type === "response") {
+      const pending = entry.requests.get(message.requestId);
+      if (!pending) return;
+      entry.requests.delete(message.requestId);
+      if (message.ok) {
+        if (message.snapshot) updateWorkerState(userId, message.snapshot);
+        pending.resolve(message.snapshot || entry.state);
       } else {
-        success = await sendFrom(user, "account2", account1.phone, messages2)
-          .then(() => true)
-          .catch((e) => {
-            log(user.id, e.message);
-            return false;
-          });
-        if (success) {
-          turn = "account1";
-        }
+        pending.reject(new Error(message.error || "Perintah worker gagal."));
       }
-      const min = Math.min(intervalMinSec, intervalMaxSec) * 1000;
-      const max = Math.max(intervalMinSec, intervalMaxSec) * 1000;
-      const delay = success
-        ? Math.floor(Math.random() * (max - min + 1)) + min
-        : 5000;
-      log(user.id, `Jeda ${Math.round(delay / 1000)} detik.`);
-      await new Promise((resolve) => setTimeout(resolve, delay));
     }
-  })().finally(() => {
-    rt.bot.running = false;
-    rt.bot.stop = false;
-    rt.bot.promise = null;
-    log(user.id, "Bot berhenti.");
+  });
+
+  child.on("exit", (code, signal) => {
+    const entry = WORKERS.get(userId);
+    if (!entry) return;
+    entry.child = null;
+    entry.state = {
+      ...entry.state,
+      worker: {
+        online: false,
+        pid: null,
+        lastError: `worker berhenti${code !== null ? ` (code ${code})` : ""}${signal ? ` signal ${signal}` : ""}`,
+      },
+    };
+    rejectWorkerRequests(entry, "Worker user berhenti.");
+    scheduleDashboardRefresh(userId);
+  });
+}
+
+function spawnWorker(user) {
+  const child = fork(WORKER_FILE, [], {
+    cwd: ROOT,
+    env: {
+      ...process.env,
+      WORKER_USER_ID: user.id,
+      WORKER_ROOT: ROOT,
+      WORKER_AUTH_DIR: AUTH_DIR,
+      WORKER_MESSAGES_FILE: MESSAGES_FILE,
+    },
+    stdio: ["ignore", "ignore", "ignore", "ipc"],
+  });
+
+  const entry = updateWorkerState(user.id, {
+    worker: { online: true, pid: child.pid, lastError: null },
+  });
+  entry.child = child;
+  attachWorkerEvents(user.id, child);
+  child.send({
+    type: "init",
+    user: userPublic(user),
+  });
+  return entry;
+}
+
+function ensureWorker(user) {
+  const existing = WORKERS.get(user.id);
+  if (existing?.child && existing.child.connected) return existing;
+  return spawnWorker(user);
+}
+
+function sendWorkerCommand(user, command, payload = {}) {
+  const entry = ensureWorker(user);
+  return new Promise((resolve, reject) => {
+    const requestId = `${user.id}_${++entry.seq}`;
+    entry.requests.set(requestId, { resolve, reject });
+    try {
+      entry.child.send({
+        type: "command",
+        requestId,
+        command,
+        payload,
+        user: userPublic(user),
+      });
+    } catch (error) {
+      entry.requests.delete(requestId);
+      reject(error);
+    }
   });
 }
 
@@ -607,31 +422,41 @@ const server = http.createServer(async (req, res) => {
 
   if (req.method === "POST" && url.pathname === "/api/register") {
     try {
+      if (limit(req, res, "register", 8, 60_000, "Terlalu banyak percobaan daftar. Coba lagi sebentar.")) return;
       const body = await parse(req);
       const db = readUsers();
       const username = String(body.username || "").trim().toLowerCase();
       if (!username || !body.password) throw new Error("Username dan password wajib diisi.");
       if (db.users.some((u) => u.username === username)) throw new Error("Username sudah dipakai.");
       const pass = hashPassword(String(body.password));
-      const user = { id: uid("user"), username, passwordSalt: pass.salt, passwordHash: pass.hash, config: defaults() };
+      const user = {
+        id: uid("user"),
+        username,
+        passwordSalt: pass.salt,
+        passwordHash: pass.hash,
+        config: defaults(),
+      };
       db.users.push(user);
       saveUsers(db);
       return json(res, 201, { user: userPublic(user) });
-    } catch (e) {
-      return json(res, 400, { error: e.message });
+    } catch (error) {
+      return json(res, 400, { error: error.message });
     }
   }
 
   if (req.method === "POST" && url.pathname === "/api/login") {
     try {
+      if (limit(req, res, "login", 20, 60_000, "Terlalu banyak percobaan login. Coba lagi sebentar.")) return;
       const body = await parse(req);
       const user = getUserByName(body.username);
-      if (!user || !verifyPassword(String(body.password || ""), user)) return json(res, 401, { error: "Username atau password salah." });
+      if (!user || !verifyPassword(String(body.password || ""), user)) {
+        return json(res, 401, { error: "Username atau password salah." });
+      }
       const token = uid("token");
       TOKENS.set(token, { userId: user.id });
       return json(res, 200, { token, user: userPublic(user) });
-    } catch (e) {
-      return json(res, 400, { error: e.message });
+    } catch (error) {
+      return json(res, 400, { error: error.message });
     }
   }
 
@@ -641,19 +466,32 @@ const server = http.createServer(async (req, res) => {
     return json(res, 200, { ok: true });
   }
 
+  const streamToken = req.method === "GET" && url.pathname === "/api/events"
+    ? url.searchParams.get("token")
+    : null;
+  if (req.method === "GET" && url.pathname === "/api/events" && streamToken) {
+    req.headers["x-auth-token"] = streamToken;
+  }
+
   const user = auth(req, res);
   if (!user) return;
 
-  if (req.method === "GET" && url.pathname === "/api/dashboard") return json(res, 200, dashboard(user));
+  if (req.method === "GET" && url.pathname === "/api/dashboard") {
+    return json(res, 200, dashboard(user));
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/events") {
+    return openDashboardStream(req, res, user);
+  }
 
   if (req.method === "POST" && url.pathname === "/api/config") {
     try {
       const body = await parse(req);
       const updated = updateUser(user.id, (current) => ({ ...current, config: sanitizeConfig(body) }));
-      log(user.id, "Konfigurasi disimpan.");
+      await sendWorkerCommand(updated, "update_config", { config: updated.config });
       return json(res, 200, dashboard(updated));
-    } catch (e) {
-      return json(res, 400, { error: e.message });
+    } catch (error) {
+      return json(res, 400, { error: error.message });
     }
   }
 
@@ -661,11 +499,13 @@ const server = http.createServer(async (req, res) => {
     try {
       const body = await parse(req);
       if (!["account1", "account2"].includes(body.accountKey)) throw new Error("accountKey tidak valid.");
-      const fresh = getUserById(user.id);
-      await connectAccount(fresh, body.accountKey, body.method === "qr" ? "qr" : "pairing");
-      return json(res, 200, dashboard(fresh));
-    } catch (e) {
-      return json(res, 400, { error: e.message });
+      await sendWorkerCommand(user, "connect", {
+        accountKey: body.accountKey,
+        method: body.method === "qr" ? "qr" : "pairing",
+      });
+      return json(res, 200, dashboard(getUserById(user.id)));
+    } catch (error) {
+      return json(res, 400, { error: error.message });
     }
   }
 
@@ -673,28 +513,29 @@ const server = http.createServer(async (req, res) => {
     try {
       const body = await parse(req);
       if (!["account1", "account2"].includes(body.accountKey)) throw new Error("accountKey tidak valid.");
-      await disconnectAccount(user.id, body.accountKey);
-      log(user.id, `${body.accountKey} diputus.`);
+      await sendWorkerCommand(user, "disconnect", { accountKey: body.accountKey });
       return json(res, 200, dashboard(getUserById(user.id)));
-    } catch (e) {
-      return json(res, 400, { error: e.message });
+    } catch (error) {
+      return json(res, 400, { error: error.message });
     }
   }
 
   if (req.method === "POST" && url.pathname === "/api/bot/start") {
     try {
-      const fresh = getUserById(user.id);
-      await startBot(fresh);
-      return json(res, 200, dashboard(fresh));
-    } catch (e) {
-      return json(res, 400, { error: e.message });
+      await sendWorkerCommand(user, "bot_start");
+      return json(res, 200, dashboard(getUserById(user.id)));
+    } catch (error) {
+      return json(res, 400, { error: error.message });
     }
   }
 
   if (req.method === "POST" && url.pathname === "/api/bot/stop") {
-    runtime(user.id).bot.stop = true;
-    log(user.id, "Permintaan stop diterima.");
-    return json(res, 200, dashboard(getUserById(user.id)));
+    try {
+      await sendWorkerCommand(user, "bot_stop");
+      return json(res, 200, dashboard(getUserById(user.id)));
+    } catch (error) {
+      return json(res, 400, { error: error.message });
+    }
   }
 
   return json(res, 404, { error: "Endpoint tidak ditemukan." });
