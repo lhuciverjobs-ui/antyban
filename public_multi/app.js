@@ -2,9 +2,11 @@ const state = {
   token: localStorage.getItem("wa_multi_token") || "",
   configEditingUntil: 0,
   qrModalAccountKey: null,
+  pairingAccountKey: null,
   fastRefreshUntil: 0,
   dashboardStream: null,
   streamRetryTimer: null,
+  currentConfig: null,
 };
 const authCard = document.getElementById("authCard");
 const appCard = document.getElementById("appCard");
@@ -14,9 +16,17 @@ const registerForm = document.getElementById("registerForm");
 const loginTab = document.getElementById("loginTab");
 const registerTab = document.getElementById("registerTab");
 const qrModal = document.getElementById("qrModal");
+const qrModalKicker = document.getElementById("qrModalKicker");
 const qrModalTitle = document.getElementById("qrModalTitle");
 const qrModalText = document.getElementById("qrModalText");
+const qrModalCode = document.getElementById("qrModalCode");
 const qrModalImage = document.getElementById("qrModalImage");
+const pairingModal = document.getElementById("pairingModal");
+const pairingModalTitle = document.getElementById("pairingModalTitle");
+const pairingPhoneInput = document.getElementById("pairingPhoneInput");
+const pairingForm = document.getElementById("pairingForm");
+const navItems = Array.from(document.querySelectorAll(".nav-item"));
+const panelViews = Array.from(document.querySelectorAll(".panel-view"));
 
 function notify(message, error = false) {
   toast.textContent = message;
@@ -36,6 +46,16 @@ async function api(url, options = {}) {
   const data = await response.json();
   if (!response.ok) throw new Error(data.error || "Request gagal.");
   return data;
+}
+
+function activatePanel(panelName) {
+  navItems.forEach((item) => {
+    item.classList.toggle("is-active", item.dataset.panel === panelName);
+  });
+
+  panelViews.forEach((view) => {
+    view.classList.toggle("is-visible", view.dataset.view === panelName);
+  });
 }
 
 function closeDashboardStream() {
@@ -103,10 +123,29 @@ function wirePasswordToggle(buttonId, inputId) {
   });
 }
 
+function openPairingModal(accountKey) {
+  state.pairingAccountKey = accountKey;
+  pairingModalTitle.textContent = accountKey === "account1" ? "Masukkan nomor untuk Akun 1" : "Masukkan nomor untuk Akun 2";
+  pairingPhoneInput.value = state.currentConfig?.[accountKey]?.phone || "";
+  pairingModal.classList.remove("hidden");
+  pairingModal.setAttribute("aria-hidden", "false");
+  setTimeout(() => pairingPhoneInput.focus(), 0);
+}
+
+function closePairingModal() {
+  state.pairingAccountKey = null;
+  pairingModal.classList.add("hidden");
+  pairingModal.setAttribute("aria-hidden", "true");
+  pairingForm.reset();
+}
+
 function openQrModal(accountKey) {
   state.qrModalAccountKey = accountKey;
+  qrModalKicker.textContent = "QR Connect";
   qrModalTitle.textContent = accountKey === "account1" ? "Scan QR Akun 1" : "Scan QR Akun 2";
   qrModalText.textContent = "Menunggu QR muncul...";
+  qrModalCode.textContent = "";
+  qrModalCode.classList.add("hidden");
   qrModalImage.classList.add("hidden");
   qrModalImage.removeAttribute("src");
   qrModal.classList.remove("hidden");
@@ -117,6 +156,8 @@ function closeQrModal() {
   state.qrModalAccountKey = null;
   qrModal.classList.add("hidden");
   qrModal.setAttribute("aria-hidden", "true");
+  qrModalCode.textContent = "";
+  qrModalCode.classList.add("hidden");
   qrModalImage.classList.add("hidden");
   qrModalImage.removeAttribute("src");
 }
@@ -129,14 +170,20 @@ function fillConfig(config) {
   const form = document.getElementById("configForm");
   const active = document.activeElement;
   const isEditing = Date.now() < state.configEditingUntil || form.contains(active);
-  if (isEditing) return;
+  state.currentConfig = {
+    account1: { label: config.account1.label || "Akun 1", phone: config.account1.phone || "" },
+    account2: { label: config.account2.label || "Akun 2", phone: config.account2.phone || "" },
+    intervalMinSec: config.intervalMinSec ?? 10,
+    intervalMaxSec: config.intervalMaxSec ?? 20,
+  };
 
-  form.account1Label.value = config.account1.label || "";
-  form.account1Phone.value = config.account1.phone || "";
-  form.account2Label.value = config.account2.label || "";
-  form.account2Phone.value = config.account2.phone || "";
-  form.intervalMinSec.value = config.intervalMinSec ?? 10;
-  form.intervalMaxSec.value = config.intervalMaxSec ?? 20;
+  if (!isEditing) {
+    form.intervalMinSec.value = state.currentConfig.intervalMinSec;
+    form.intervalMaxSec.value = state.currentConfig.intervalMaxSec;
+  }
+
+  document.getElementById("accountName1").textContent = state.currentConfig.account1.label || "Akun 1";
+  document.getElementById("accountName2").textContent = state.currentConfig.account2.label || "Akun 2";
 }
 
 function markConfigEditing() {
@@ -149,30 +196,55 @@ function renderAccount(key, data) {
   const badge = document.getElementById(`badge${suffix}`);
   badge.textContent = data.status;
   badge.className = `status-chip ${data.status === "ready" ? "on" : "off"}`;
-  document.getElementById(`pairing${suffix}`).textContent = data.pairingCode ? `Pairing code: ${data.pairingCode}` : "";
+  document.getElementById(`pairing${suffix}`).textContent = data.pairingCode || "-";
   document.getElementById(`error${suffix}`).textContent = data.lastError || "";
+  const phoneText = String(data.phone || "").trim();
+  const phoneRow = document.getElementById(`accountPhoneRow${suffix}`);
+  const phoneValue = document.getElementById(`accountPhone${suffix}`);
+  phoneValue.textContent = phoneText;
+  phoneRow.classList.toggle("hidden", !phoneText);
+
   if (state.qrModalAccountKey === key) {
     if (data.status === "ready") {
       closeQrModal();
+      activatePanel("account");
       notify(`${key} berhasil terhubung.`);
     } else if (data.pairingCode) {
-      qrModalText.textContent = `Masukkan pairing code ini di WhatsApp: ${data.pairingCode}`;
+      qrModalKicker.textContent = "Pairing Code";
+      qrModalTitle.textContent = key === "account1" ? "Code Akun 1" : "Code Akun 2";
+      qrModalText.textContent = "Masukkan pairing code ini di WhatsApp.";
+      qrModalCode.textContent = data.pairingCode;
+      qrModalCode.classList.remove("hidden");
       qrModalImage.classList.add("hidden");
       qrModalImage.removeAttribute("src");
     } else if (data.method === "pairing" && data.qrDataUrl) {
+      qrModalKicker.textContent = "QR Fallback";
+      qrModalTitle.textContent = key === "account1" ? "Scan QR Akun 1" : "Scan QR Akun 2";
       qrModalText.textContent = "Pairing code gagal dibuat, jadi sistem menampilkan QR sebagai fallback.";
+      qrModalCode.textContent = "";
+      qrModalCode.classList.add("hidden");
       qrModalImage.src = data.qrDataUrl;
       qrModalImage.classList.remove("hidden");
     } else if (data.qrDataUrl) {
+      qrModalKicker.textContent = "QR Connect";
+      qrModalTitle.textContent = key === "account1" ? "Scan QR Akun 1" : "Scan QR Akun 2";
       qrModalText.textContent = "Scan QR ini dengan WhatsApp pada akun yang dipilih.";
+      qrModalCode.textContent = "";
+      qrModalCode.classList.add("hidden");
       qrModalImage.src = data.qrDataUrl;
       qrModalImage.classList.remove("hidden");
     } else if (data.lastError) {
+      qrModalCode.textContent = "";
+      qrModalCode.classList.add("hidden");
       qrModalText.textContent = data.lastError;
       qrModalImage.classList.add("hidden");
       qrModalImage.removeAttribute("src");
     } else {
+      qrModalKicker.textContent = "QR Connect";
+      qrModalTitle.textContent = key === "account1" ? "Scan QR Akun 1" : "Scan QR Akun 2";
       qrModalText.textContent = "Menunggu QR muncul...";
+      qrModalCode.textContent = "";
+      qrModalCode.classList.add("hidden");
       qrModalImage.classList.add("hidden");
       qrModalImage.removeAttribute("src");
     }
@@ -213,6 +285,37 @@ async function refresh(silent = false) {
   }
 }
 
+async function saveConfigPatch(patch) {
+  const nextConfig = {
+    account1: { ...(state.currentConfig?.account1 || { label: "Akun 1", phone: "" }) },
+    account2: { ...(state.currentConfig?.account2 || { label: "Akun 2", phone: "" }) },
+    intervalMinSec: state.currentConfig?.intervalMinSec ?? 10,
+    intervalMaxSec: state.currentConfig?.intervalMaxSec ?? 20,
+    ...patch,
+  };
+
+  const payload = await api("/api/config", { method: "POST", body: JSON.stringify(nextConfig) });
+  render(payload);
+  return payload;
+}
+
+async function connectAccount(accountKey, method) {
+  activatePanel("account");
+  if (method === "qr" || method === "pairing") {
+    openQrModal(accountKey);
+    startFastRefresh();
+    qrModalText.textContent = method === "pairing"
+      ? "Menunggu pairing code muncul..."
+      : "Menunggu QR muncul...";
+  }
+
+  render(await api("/api/connect", {
+    method: "POST",
+    body: JSON.stringify({ accountKey, method }),
+  }));
+  notify(`Proses ${accountKey} dimulai.`);
+}
+
 registerForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   const formEl = event.currentTarget;
@@ -243,6 +346,7 @@ loginForm.addEventListener("submit", async (event) => {
     localStorage.setItem("wa_multi_token", data.token);
     await refresh(true);
     openDashboardStream();
+    activatePanel("account");
     notify("Login berhasil.");
     formEl.reset();
   } catch (error) {
@@ -254,15 +358,12 @@ document.getElementById("configForm").addEventListener("submit", async (event) =
   event.preventDefault();
   state.configEditingUntil = 0;
   const form = new FormData(event.currentTarget);
-  const body = {
-    account1: { label: form.get("account1Label"), phone: form.get("account1Phone") },
-    account2: { label: form.get("account2Label"), phone: form.get("account2Phone") },
-    intervalMinSec: Number(form.get("intervalMinSec")),
-    intervalMaxSec: Number(form.get("intervalMaxSec")),
-  };
   try {
-    render(await api("/api/config", { method: "POST", body: JSON.stringify(body) }));
-    notify("Konfigurasi disimpan.");
+    await saveConfigPatch({
+      intervalMinSec: Number(form.get("intervalMinSec")),
+      intervalMaxSec: Number(form.get("intervalMaxSec")),
+    });
+    notify("Timing disimpan.");
   } catch (error) {
     notify(error.message, true);
   }
@@ -270,21 +371,14 @@ document.getElementById("configForm").addEventListener("submit", async (event) =
 
 document.querySelectorAll("[data-connect]").forEach((button) => {
   button.addEventListener("click", async () => {
+    const accountKey = button.dataset.connect;
+    const method = button.dataset.method;
     try {
-      const accountKey = button.dataset.connect;
-      const method = button.dataset.method;
-      if (method === "qr" || method === "pairing") {
-        openQrModal(accountKey);
-        startFastRefresh();
-        qrModalText.textContent = method === "pairing"
-          ? "Menunggu pairing code muncul..."
-          : "Menunggu QR muncul...";
+      if (method === "pairing") {
+        openPairingModal(accountKey);
+        return;
       }
-      render(await api("/api/connect", {
-        method: "POST",
-        body: JSON.stringify({ accountKey, method }),
-      }));
-      notify(`Proses ${accountKey} dimulai.`);
+      await connectAccount(accountKey, method);
     } catch (error) {
       closeQrModal();
       notify(error.message, true);
@@ -292,9 +386,34 @@ document.querySelectorAll("[data-connect]").forEach((button) => {
   });
 });
 
+pairingForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  if (!state.pairingAccountKey) return;
+  const accountKey = state.pairingAccountKey;
+  const phone = pairingPhoneInput.value.trim();
+  if (!phone) {
+    notify("Nomor WhatsApp wajib diisi.", true);
+    return;
+  }
+
+  try {
+    const nextAccountConfig = {
+      ...(state.currentConfig?.[accountKey] || { label: accountKey === "account1" ? "Akun 1" : "Akun 2", phone: "" }),
+      phone,
+    };
+
+    await saveConfigPatch({ [accountKey]: nextAccountConfig });
+    closePairingModal();
+    await connectAccount(accountKey, "pairing");
+  } catch (error) {
+    notify(error.message, true);
+  }
+});
+
 document.querySelectorAll("[data-disconnect]").forEach((button) => {
   button.addEventListener("click", async () => {
     try {
+      activatePanel("account");
       if (state.qrModalAccountKey === button.dataset.disconnect) {
         closeQrModal();
       }
@@ -312,6 +431,7 @@ document.querySelectorAll("[data-disconnect]").forEach((button) => {
 document.getElementById("startBotBtn").addEventListener("click", async () => {
   try {
     render(await api("/api/bot/start", { method: "POST" }));
+    activatePanel("console");
     notify("Bot dijalankan.");
   } catch (error) {
     notify(error.message, true);
@@ -321,6 +441,7 @@ document.getElementById("startBotBtn").addEventListener("click", async () => {
 document.getElementById("stopBotBtn").addEventListener("click", async () => {
   try {
     render(await api("/api/bot/stop", { method: "POST" }));
+    activatePanel("console");
     notify("Bot dihentikan.");
   } catch (error) {
     notify(error.message, true);
@@ -329,7 +450,9 @@ document.getElementById("stopBotBtn").addEventListener("click", async () => {
 
 document.getElementById("refreshBtn").addEventListener("click", () => refresh());
 document.getElementById("closeQrModalBtn").addEventListener("click", closeQrModal);
+document.getElementById("closePairingModalBtn").addEventListener("click", closePairingModal);
 document.querySelectorAll("[data-close-modal='true']").forEach((el) => el.addEventListener("click", closeQrModal));
+document.querySelectorAll("[data-close-pairing='true']").forEach((el) => el.addEventListener("click", closePairingModal));
 
 document.getElementById("logoutBtn").addEventListener("click", async () => {
   try { await api("/api/logout", { method: "POST" }); } catch {}
@@ -343,6 +466,10 @@ wirePasswordToggle("toggleLoginPassword", "loginPassword");
 wirePasswordToggle("toggleRegisterPassword", "registerPassword");
 document.getElementById("configForm").addEventListener("input", markConfigEditing);
 document.getElementById("configForm").addEventListener("focusin", markConfigEditing);
+
+navItems.forEach((item) => {
+  item.addEventListener("click", () => activatePanel(item.dataset.panel));
+});
 
 document.addEventListener("visibilitychange", () => {
   if (!document.hidden && state.token) {
@@ -361,4 +488,7 @@ setInterval(() => {
   }
 }, 15000);
 
+activatePanel("account");
 refresh(true);
+
+

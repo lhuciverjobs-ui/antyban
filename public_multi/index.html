@@ -3,18 +3,19 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>WA Bot Multi User</title>
+    <title>ZAYS WA-BOT</title>
     <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
     <div class="bg-orb orb-a"></div>
     <div class="bg-orb orb-b"></div>
     <div class="bg-grid"></div>
+
     <main class="shell">
       <section id="authCard" class="auth-shell">
         <div class="auth-panel">
           <p class="auth-kicker">secure_access_portal</p>
-          <h1 class="brand-title">WABOT <span>MULTI</span></h1>
+          <h1 class="brand-title">ZAYS <span>WA-BOT</span></h1>
           <p class="brand-meta">created = ZAYS</p>
 
           <div class="auth-tabs">
@@ -56,20 +57,17 @@
         </div>
       </section>
 
-      <section id="appCard" class="app-shell hidden">
-        <aside class="sidebar panel">
-          <div class="brand brand-text-only">
+      <section id="appCard" class="workspace-shell hidden">
+        <aside class="workspace-sidebar panel">
+          <div class="workspace-brand">
             <div>
-              <h1>WABOT <span>MULTI</span></h1>
-              <p>created = ZAYS</p>
+              <h1>ZAYS <span>WA-BOT</span></h1>
+              <p>live automation workspace</p>
             </div>
+            <button id="logoutBtn" class="mini-btn" type="button">Logout</button>
           </div>
 
-          <section class="card glass operator-card">
-            <div class="card-head">
-              <div class="card-title">Operator</div>
-              <button id="logoutBtn" class="mini-btn" type="button">Logout</button>
-            </div>
+          <div class="workspace-user card glass">
             <div class="user-chip premium">
               <span class="user-dot"></span>
               <div>
@@ -77,46 +75,35 @@
                 <span>multi user control</span>
               </div>
             </div>
-            <div class="inline-meta inline-split">
+            <div class="inline-meta inline-split compact-meta">
               <span id="botStatusBadge" class="status-chip off">bot offline</span>
               <span>session local</span>
             </div>
-          </section>
+          </div>
 
-          <section class="card glass identity-card">
-            <div class="card-head">
-              <div>
-                <div class="card-title">Konfigurasi Bot</div>
-                <div class="card-subtitle">Set nomor akun, interval, dan template pesan untuk user ini.</div>
-              </div>
-              <button form="configForm" class="mini-btn accent" type="submit">Save</button>
-            </div>
-            <form id="configForm" class="stack">
-              <label>Akun 1</label>
-              <div class="grid two">
-                <input name="account1Label" placeholder="Label akun 1" />
-                <input name="account1Phone" placeholder="Nomor akun 1" />
-              </div>
-              <label>Akun 2</label>
-              <div class="grid two">
-                <input name="account2Label" placeholder="Label akun 2" />
-                <input name="account2Phone" placeholder="Nomor akun 2" />
-              </div>
-              <label>Timing</label>
-              <div class="grid two">
-                <input name="intervalMinSec" type="number" min="1" placeholder="Min detik" />
-                <input name="intervalMaxSec" type="number" min="1" placeholder="Max detik" />
-              </div>
-            </form>
-          </section>
+          <nav class="workspace-nav" aria-label="Panel utama">
+            <button class="nav-item is-active" type="button" data-panel="account">
+              <span class="nav-title">Akun</span>
+              <span class="nav-copy">Lihat sesi aktif dan koneksi akun</span>
+            </button>
+            <button class="nav-item" type="button" data-panel="console">
+              <span class="nav-title">Live Console</span>
+              <span class="nav-copy">Pantau log dan runtime bot secara live</span>
+            </button>
+            <button class="nav-item" type="button" data-panel="settings">
+              <span class="nav-title">Setting</span>
+              <span class="nav-copy">Atur timing dan kontrol bot</span>
+            </button>
+          </nav>
 
-          <section class="actions two-only">
-            <button id="startBotBtn" class="btn primary" type="button">Start Bot</button>
-            <button id="stopBotBtn" class="btn danger" type="button">Stop Bot</button>
-          </section>
+          <div class="workspace-sideinfo card glass">
+            <span>Responsive workspace</span>
+            <span>Live execution feed</span>
+            <span>Multi-account control</span>
+          </div>
         </aside>
 
-        <main class="main">
+        <main class="workspace-main">
           <section class="status-strip panel glass-line compact-top status-triplet">
             <div class="status-box">
               <span class="eyebrow">System Status</span>
@@ -136,94 +123,164 @@
             </div>
           </section>
 
-          <section class="section">
-            <div class="section-head stage-headline">
-              <div>
-                <h2>WhatsApp Session Grid</h2>
-                <p class="section-copy">Kelola koneksi tiap akun dari satu dashboard, lengkap dengan QR dan pairing code.</p>
-              </div>
-              <button id="refreshBtn" class="mini-btn accent" type="button">Refresh</button>
-            </div>
-            <section class="pad-stage dynamic">
-              <div class="stage-card panel glass" id="accountCard1">
-                <div class="stage-top">
-                  <div>
-                    <div class="stage-tag">Akun 1</div>
-                    <h3>Akun pengirim pertama</h3>
-                  </div>
-                  <span class="status-chip off" id="badge1">idle</span>
+          <section class="panel-view is-visible" data-view="account">
+            <section class="section">
+              <div class="section-head stage-headline">
+                <div>
+                  <h2>Sesi Akun Aktif</h2>
+                  <p class="section-copy">Connect akun langsung dari kartu ini. QR tidak butuh nomor, pairing akan minta nomor di popup.</p>
                 </div>
-                <div class="stage-actions">
-                  <div class="actions two-only">
+                <button id="refreshBtn" class="mini-btn accent" type="button">Refresh</button>
+              </div>
+              <section class="session-grid">
+                <article class="session-card panel glass" id="accountCard1">
+                  <div class="stage-top">
+                    <div>
+                      <div class="stage-tag">Akun 1</div>
+                      <h3 id="accountName1">Akun 1</h3>
+                    </div>
+                    <span class="status-chip off" id="badge1">idle</span>
+                  </div>
+                  <div class="session-details">
+                    <p class="session-line">Status session aktif untuk slot akun pertama.</p><p id="accountPhoneRow1" class="session-line hidden">Nomor: <span id="accountPhone1"></span></p>
+                    <p class="session-line">Pairing: <span id="pairing1">-</span></p>
+                    <p id="error1" class="error-text"></p>
+                  </div>
+                  <div class="session-actions actions two-only">
                     <button data-connect="account1" data-method="pairing" class="btn primary" type="button">Connect Pairing</button>
                     <button data-connect="account1" data-method="qr" class="btn muted" type="button">Connect QR</button>
                   </div>
                   <button data-disconnect="account1" class="btn ghost" type="button">Disconnect</button>
-                </div>
-                <div class="stage-body">
-                  <p id="pairing1" class="code-line"></p>
-                  <p id="error1" class="error-text"></p>
-                </div>
-              </div>
+                </article>
 
-              <div class="stage-card panel glass" id="accountCard2">
-                <div class="stage-top">
-                  <div>
-                    <div class="stage-tag">Akun 2</div>
-                    <h3>Akun pengirim kedua</h3>
+                <article class="session-card panel glass" id="accountCard2">
+                  <div class="stage-top">
+                    <div>
+                      <div class="stage-tag">Akun 2</div>
+                      <h3 id="accountName2">Akun 2</h3>
+                    </div>
+                    <span class="status-chip off" id="badge2">idle</span>
                   </div>
-                  <span class="status-chip off" id="badge2">idle</span>
-                </div>
-                <div class="stage-actions">
-                  <div class="actions two-only">
+                  <div class="session-details">
+                    <p class="session-line">Status session aktif untuk slot akun kedua.</p><p id="accountPhoneRow2" class="session-line hidden">Nomor: <span id="accountPhone2"></span></p>
+                    <p class="session-line">Pairing: <span id="pairing2">-</span></p>
+                    <p id="error2" class="error-text"></p>
+                  </div>
+                  <div class="session-actions actions two-only">
                     <button data-connect="account2" data-method="pairing" class="btn primary" type="button">Connect Pairing</button>
                     <button data-connect="account2" data-method="qr" class="btn muted" type="button">Connect QR</button>
                   </div>
                   <button data-disconnect="account2" class="btn ghost" type="button">Disconnect</button>
+                </article>
+              </section>
+            </section>
+          </section>
+
+          <section class="panel-view" data-view="console">
+            <section class="section console-section">
+              <div class="section-head">
+                <div>
+                  <h2>Live Execution Feed</h2>
+                  <p class="section-copy">Pantau aktivitas bot, jeda, connect, dan error tanpa pindah halaman.</p>
                 </div>
-                <div class="stage-body">
-                  <p id="pairing2" class="code-line"></p>
-                  <p id="error2" class="error-text"></p>
+                <div class="feed-meta"><span>SYS_TERMINAL_OUT</span></div>
+              </div>
+              <div class="panel terminal">
+                <div class="terminal-bar">
+                  <span>&gt; WABOT_RUNTIME_LOG</span>
+                  <span id="botStatusMini">live feed</span>
                 </div>
+                <pre id="logBox">Belum ada log.</pre>
               </div>
             </section>
           </section>
 
-          <section class="section">
-            <div class="section-head">
-              <div>
-                <h2>Live Execution Feed</h2>
-                <p class="section-copy">Pantau aktivitas bot, jeda, connect, dan error tanpa pindah halaman.</p>
+          <section class="panel-view" data-view="settings">
+            <section class="section settings-section compact-section">
+              <div class="section-head compact-head">
+                <div>
+                  <h2>Setting</h2>
+                  <p class="section-copy">Atur timing bot dan kontrol start/stop dari sini.</p>
+                </div>
               </div>
-              <div class="feed-meta"><span>SYS_TERMINAL_OUT</span></div>
-            </div>
-            <div class="panel terminal">
-              <div class="terminal-bar">
-                <span>&gt; WABOT_RUNTIME_LOG</span>
-                <span id="botStatusMini">live feed</span>
-              </div>
-              <pre id="logBox">Belum ada log.</pre>
-            </div>
+              <section class="panel glass settings-panel compact-settings">
+                <div class="settings-layout">
+                  <form id="configForm" class="stack compact-form settings-card">
+                    <div class="settings-card-head">
+                      <span class="stage-tag">Timing</span>
+                      <h3>Interval Bot</h3>
+                    </div>
+                    <p class="section-copy">Tentukan jeda minimum dan maksimum antar aksi bot.</p>
+                    <div class="grid two timing-grid">
+                      <label class="field">
+                        <span>Min Detik</span>
+                        <input name="intervalMinSec" type="number" min="1" placeholder="Min detik" />
+                      </label>
+                      <label class="field">
+                        <span>Max Detik</span>
+                        <input name="intervalMaxSec" type="number" min="1" placeholder="Max detik" />
+                      </label>
+                    </div>
+                    <button form="configForm" class="btn muted settings-save" type="submit">Save Timing</button>
+                  </form>
+
+                  <section class="settings-card control-card">
+                    <div class="settings-card-head">
+                      <span class="stage-tag">Control</span>
+                      <h3>Bot Runtime</h3>
+                    </div>
+                    <p class="section-copy">Jalankan atau hentikan bot dari panel ini tanpa pindah halaman.</p>
+                    <section class="settings-actions control-actions">
+                      <button id="startBotBtn" class="btn primary" type="button">Start Bot</button>
+                      <button id="stopBotBtn" class="btn danger" type="button">Stop Bot</button>
+                    </section>
+                  </section>
+                </div>
+              </section>
+            </section>
           </section>
         </main>
       </section>
     </main>
+
+    <div id="pairingModal" class="modal hidden" aria-hidden="true">
+      <div class="modal-backdrop" data-close-pairing="true"></div>
+      <div class="modal-panel panel">
+        <div class="modal-head">
+          <div>
+            <div class="card-title">Pairing Number</div>
+            <h3 id="pairingModalTitle">Masukkan nomor</h3>
+          </div>
+          <button id="closePairingModalBtn" class="mini-btn" type="button">Close</button>
+        </div>
+        <form id="pairingForm" class="stack">
+          <label class="field">
+            <span>Nomor WhatsApp</span>
+            <input id="pairingPhoneInput" name="phone" placeholder="628xxxx" required />
+          </label>
+          <button class="btn primary" type="submit">Lanjut Pairing</button>
+        </form>
+      </div>
+    </div>
 
     <div id="qrModal" class="modal hidden" aria-hidden="true">
       <div class="modal-backdrop" data-close-modal="true"></div>
       <div class="modal-panel panel">
         <div class="modal-head">
           <div>
-            <div class="card-title">QR Connect</div>
+            <div id="qrModalKicker" class="card-title">QR Connect</div>
             <h3 id="qrModalTitle">Scan QR</h3>
           </div>
           <button id="closeQrModalBtn" class="mini-btn" type="button">Close</button>
         </div>
         <p id="qrModalText" class="section-copy">Menunggu QR muncul...</p>
+        <div id="qrModalCode" class="pairing-code hidden"></div>
         <img id="qrModalImage" class="qr modal-qr hidden" alt="QR WhatsApp" />
       </div>
     </div>
     <div id="toast" class="toast hidden"></div>
     <script src="/app.js"></script>
   </body>
-  </html>
+</html>
+
+

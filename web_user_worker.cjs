@@ -132,22 +132,67 @@ function chatId(phone) {
   return `${formatNumber(phone)}@c.us`;
 }
 
-function sessionId(phone) {
-  return `sesi_${formatNumber(phone)}`;
+async function resolveTargetChatId(client, phone) {
+  const normalized = formatNumber(phone);
+  if (!normalized) throw new Error("Nomor tujuan kosong atau tidak valid.");
+
+  try {
+    const numberId = await client.getNumberId(normalized);
+    if (numberId?._serialized) return numberId._serialized;
+    if (typeof numberId === "string") return numberId;
+  } catch {}
+
+  try {
+    const exists = await client.isRegisteredUser(chatId(normalized));
+    if (exists) return chatId(normalized);
+  } catch {}
+
+  throw new Error(`Nomor ${normalized} tidak bisa di-resolve oleh sesi WhatsApp ini.`);
 }
 
-function getSessionDir(userId, phone) {
-  if (!phone) return null;
-  return path.join(AUTH_DIR, userId, `session-${sessionId(phone)}`);
+function sessionToken(key, phone) {
+  const normalized = formatNumber(phone);
+  return normalized || key;
 }
 
-function removeSessionDir(userId, phone) {
-  const sessionDir = getSessionDir(userId, phone);
+function sessionId(key, phone) {
+  return `sesi_${sessionToken(key, phone)}`;
+}
+
+function getSessionDir(userId, key, phone) {
+  const token = sessionToken(key, phone);
+  if (!token) return null;
+  return path.join(AUTH_DIR, userId, `session-${sessionId(key, phone)}`);
+}
+
+function removeSessionDir(userId, key, phone) {
+  const sessionDir = getSessionDir(userId, key, phone);
   if (sessionDir && fs.existsSync(sessionDir)) {
     fs.rmSync(sessionDir, { recursive: true, force: true });
     return true;
   }
   return false;
+}
+
+function removeSessionVariants(userId, key, ...phones) {
+  const candidates = new Set();
+  candidates.add(getSessionDir(userId, key, null));
+
+  for (const phone of phones) {
+    const normalized = formatNumber(phone);
+    if (!normalized) continue;
+    candidates.add(getSessionDir(userId, key, normalized));
+  }
+
+  let removed = false;
+  for (const sessionDir of candidates) {
+    if (sessionDir && fs.existsSync(sessionDir)) {
+      fs.rmSync(sessionDir, { recursive: true, force: true });
+      removed = true;
+    }
+  }
+
+  return removed;
 }
 
 function withTimeout(promise, ms, label) {
@@ -197,7 +242,7 @@ function readMessagesFromFile(filePath) {
   return { messages1, messages2 };
 }
 
-function makeClient(phone, method = null) {
+function makeClient(key, phone, method = null) {
   const dir = path.join(AUTH_DIR, currentUser.id);
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
   const executablePath = process.env.PUPPETEER_EXECUTABLE_PATH || process.env.CHROME_PATH;
@@ -208,7 +253,7 @@ function makeClient(phone, method = null) {
   if (executablePath) puppeteer.executablePath = executablePath;
 
   const clientOptions = {
-    authStrategy: new LocalAuth({ clientId: sessionId(phone), dataPath: dir }),
+    authStrategy: new LocalAuth({ clientId: sessionId(key, phone), dataPath: dir }),
     puppeteer,
   };
 
@@ -223,13 +268,13 @@ function makeClient(phone, method = null) {
   return new Client(clientOptions);
 }
 
-async function verifyStoredSession(phone) {
-  const sessionDir = getSessionDir(currentUser.id, phone);
+async function verifyStoredSession(key, phone) {
+  const sessionDir = getSessionDir(currentUser.id, key, phone);
   if (!sessionDir || !fs.existsSync(sessionDir)) {
     return { status: "missing", detail: "folder sesi tidak ditemukan" };
   }
 
-  const client = makeClient(phone, null);
+  const client = makeClient(key, phone, null);
 
   try {
     return await new Promise((resolve) => {
@@ -265,10 +310,18 @@ async function disconnectAccount(key) {
     current.reconnectTimer = null;
   }
   const currentPhone = current.phone;
+  const currentSessionKey = current.sessionKey || key;
   if (current.client) {
+    try { await current.client.logout(); } catch {}
     try { await current.client.destroy(); } catch {}
   }
-  removeSessionDir(currentUser.id, currentPhone);
+  removeSessionVariants(
+    currentUser.id,
+    key,
+    currentPhone,
+    currentSessionKey,
+    currentUser?.config?.[key]?.phone
+  );
   runtime.accounts[key] = blankAccount();
   publishSnapshot();
 }
@@ -302,13 +355,15 @@ function scheduleReconnect(key, method) {
 async function connectAccount(key, method) {
   if (!currentUser) throw new Error("Worker belum siap.");
   const cfg = currentUser.config[key];
+  const requiresPhone = method === "pairing";
   const phone = formatNumber(cfg.phone);
-  if (!phone) throw new Error(`Nomor ${cfg.label} belum diisi.`);
+  const sessionKey = sessionToken(key, phone);
+  if (requiresPhone && !phone) throw new Error(`Nomor ${cfg.label} belum diisi.`);
 
   const current = runtime.accounts[key];
   if (current.client) {
-    const samePhone = current.phone === phone;
-    const reusable = samePhone && current.status === "ready";
+    const sameSession = current.sessionKey === sessionKey;
+    const reusable = sameSession && current.status === "ready";
     if (reusable) {
       log(`${cfg.label} masih aktif, lanjut pakai sesi connect yang ada.`);
       return;
@@ -318,20 +373,21 @@ async function connectAccount(key, method) {
     await disconnectAccount(key);
   }
 
-  const sessionProbe = await verifyStoredSession(phone);
+  const sessionProbe = await verifyStoredSession(key, phone);
   const effectiveMethod = sessionProbe.status === "active" ? null : method;
 
   if (sessionProbe.status === "active") {
     log(`${cfg.label} pakai sesi tersimpan yang masih valid.`);
   } else if (sessionProbe.status === "inactive") {
-    removeSessionDir(currentUser.id, phone);
+    removeSessionVariants(currentUser.id, key, phone);
     log(`${cfg.label} sesi lama tidak valid, lanjut login ulang (${method}).`);
   }
 
-  const client = makeClient(phone, effectiveMethod);
+  const client = makeClient(key, phone, effectiveMethod);
   runtime.accounts[key] = {
     client,
     phone,
+    sessionKey,
     status: "initializing",
     method: effectiveMethod,
     preferredMethod: method || current.preferredMethod || "pairing",
@@ -379,6 +435,17 @@ async function connectAccount(key, method) {
 
   client.on("ready", () => {
     const acc = runtime.accounts[key];
+    const detectedPhone = formatNumber(
+      acc.client?.info?.wid?.user ||
+      acc.client?.info?.me?.user ||
+      ""
+    );
+    if (detectedPhone) {
+      acc.phone = detectedPhone;
+      if (currentUser?.config?.[key]) {
+        currentUser.config[key].phone = detectedPhone;
+      }
+    }
     acc.status = "ready";
     acc.qrDataUrl = null;
     acc.pairingCode = null;
@@ -422,8 +489,8 @@ async function sendFrom(key, targetPhone, messages) {
   const sender = runtime.accounts[key];
   if (!sender.client || sender.status !== "ready") throw new Error(`${currentUser.config[key].label} belum ready.`);
   const msg = messages[Math.floor(Math.random() * messages.length)];
-  const targetChatId = chatId(targetPhone);
-  log(`${currentUser.config[key].label} mencoba kirim ke ${targetPhone}...`);
+  const targetChatId = await resolveTargetChatId(sender.client, targetPhone);
+  log(`${currentUser.config[key].label} mencoba kirim ke ${targetPhone} (${targetChatId})...`);
   await withTimeout(sender.client.sendMessage(targetChatId, msg), 20000, `Kirim ${currentUser.config[key].label}`);
   log(`${currentUser.config[key].label} -> ${targetPhone}: ${msg}`);
 }
@@ -431,9 +498,11 @@ async function sendFrom(key, targetPhone, messages) {
 async function startBot() {
   if (runtime.bot.running) throw new Error("Bot sudah jalan.");
   const { account1, account2, intervalMinSec, intervalMaxSec } = currentUser.config;
+  const account1Phone = formatNumber(runtime.accounts.account1.phone || account1.phone);
+  const account2Phone = formatNumber(runtime.accounts.account2.phone || account2.phone);
   const { messages1, messages2 } = readMessagesFromFile(MESSAGES_FILE);
-  if (!account1.phone || !account2.phone) throw new Error("Isi dua nomor akun dulu.");
-  if (formatNumber(account1.phone) === formatNumber(account2.phone)) throw new Error("Nomor akun harus berbeda.");
+  if (!account1Phone || !account2Phone) throw new Error("Isi dua nomor akun dulu.");
+  if (account1Phone === account2Phone) throw new Error("Nomor akun harus berbeda.");
   if (!messages1.length || !messages2.length) throw new Error("Pesan kedua akun tidak boleh kosong.");
   if (runtime.accounts.account1.status !== "ready" || runtime.accounts.account2.status !== "ready") {
     throw new Error("Kedua akun harus ready.");
@@ -448,13 +517,13 @@ async function startBot() {
     while (!runtime.bot.stop) {
       let success = false;
       if (turn === "account1") {
-        success = await sendFrom("account1", account2.phone, messages1).then(() => true).catch((error) => {
+        success = await sendFrom("account1", account2Phone, messages1).then(() => true).catch((error) => {
           log(error.message);
           return false;
         });
         if (success) turn = "account2";
       } else {
-        success = await sendFrom("account2", account1.phone, messages2).then(() => true).catch((error) => {
+        success = await sendFrom("account2", account1Phone, messages2).then(() => true).catch((error) => {
           log(error.message);
           return false;
         });
@@ -475,3 +544,6 @@ async function startBot() {
     publishSnapshot();
   });
 }
+
+
+

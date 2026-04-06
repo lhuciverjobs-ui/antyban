@@ -57,6 +57,15 @@ function defaults() {
   };
 }
 
+function resetSlotConfig(config, accountKey) {
+  const base = defaults();
+  return sanitizeConfig({
+    ...base,
+    ...config,
+    [accountKey]: base[accountKey],
+  });
+}
+
 function blankAccount() {
   return {
     status: "idle",
@@ -513,8 +522,14 @@ const server = http.createServer(async (req, res) => {
     try {
       const body = await parse(req);
       if (!["account1", "account2"].includes(body.accountKey)) throw new Error("accountKey tidak valid.");
-      await sendWorkerCommand(user, "disconnect", { accountKey: body.accountKey });
-      return json(res, 200, dashboard(getUserById(user.id)));
+      const accountKey = body.accountKey;
+      await sendWorkerCommand(user, "disconnect", { accountKey });
+      const updated = updateUser(user.id, (current) => ({
+        ...current,
+        config: resetSlotConfig(current.config || defaults(), accountKey),
+      }));
+      await sendWorkerCommand(updated, "update_config", { config: updated.config });
+      return json(res, 200, dashboard(updated));
     } catch (error) {
       return json(res, 400, { error: error.message });
     }
