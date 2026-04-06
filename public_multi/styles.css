@@ -742,15 +742,39 @@ pre { font-family: var(--font-mono); }
   }
 
   .status-strip {
-    grid-template-columns: 1fr;
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(132px, 1fr);
+    grid-template-columns: none;
+    gap: 0;
+    overflow-x: auto;
+    overflow-y: hidden;
+    border-radius: 18px;
+    margin-bottom: 14px;
+    scrollbar-width: none;
   }
+
+  .status-strip::-webkit-scrollbar { display: none; }
 
   .status-box {
-    border-right: 0;
-    border-bottom: 1px solid rgba(148,163,184,0.1);
+    min-width: 132px;
+    padding: 12px 14px;
+    border-right: 1px solid rgba(148,163,184,0.08);
+    border-bottom: 0;
   }
 
-  .status-box:last-child { border-bottom: 0; }
+  .status-box:last-child { border-right: 0; }
+
+  .status-box strong {
+    margin-top: 4px;
+    font-size: 16px;
+    line-height: 1.05;
+  }
+
+  .status-box .eyebrow {
+    font-size: 10px;
+    letter-spacing: 0.14em;
+  }
 
   .workspace-brand {
     flex-direction: column;

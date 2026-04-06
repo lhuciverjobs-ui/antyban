@@ -192,7 +192,6 @@ function markConfigEditing() {
 
 function renderAccount(key, data) {
   const suffix = key === "account1" ? "1" : "2";
-  document.getElementById(`status${suffix}`).textContent = data.status;
   const badge = document.getElementById(`badge${suffix}`);
   badge.textContent = data.status;
   badge.className = `status-chip ${data.status === "ready" ? "on" : "off"}`;
@@ -258,8 +257,6 @@ function render(payload) {
   document.getElementById("welcomeText").textContent = payload.user.username;
   const startBotBtn = document.getElementById("startBotBtn");
   const stopBotBtn = document.getElementById("stopBotBtn");
-  const botText = payload.bot.running ? "jalan" : "mati";
-  document.getElementById("botStatus").textContent = botText;
   document.getElementById("botStatusBadge").textContent = payload.bot.running ? "bot online" : "bot offline";
   document.getElementById("botStatusBadge").className = `status-chip ${payload.bot.running ? "on" : "off"}`;
   document.getElementById("botStatusMini").textContent = payload.bot.running ? "bot online" : "live feed";
