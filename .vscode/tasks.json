@@ -9,6 +9,17 @@
       "problemMatcher": []
     },
     {
+      "label": "Run App on Port",
+      "type": "process",
+      "command": "pwsh",
+      "args": [
+        "-NoProfile",
+        "-Command",
+        "$env:HOST='0.0.0.0'; $env:PORT='3000'; npm start"
+      ],
+      "problemMatcher": []
+    },
+    {
       "label": "Deploy: commit and push",
       "type": "process",
       "command": "pwsh",

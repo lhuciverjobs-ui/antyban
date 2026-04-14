@@ -40,7 +40,10 @@ Kalau dipasang di Replit atau platform lain, pastikan:
 Kalau kamu buka repo ini di VS Code, pakai task bawaan:
 
 - `Run App` untuk menjalankan server lokal
+- `Run App on Port` untuk menjalankan server dengan `HOST=0.0.0.0` dan port tetap
 - `Deploy: commit and push` untuk publish perubahan ke branch aktif di GitHub
+
+Kalau mau debug langsung dari editor, pakai konfigurasi `Run App on Port` di panel Run and Debug. Saat diminta, isi port yang kamu mau.
 
 ## Upload ke GitHub
 
