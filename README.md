@@ -25,6 +25,8 @@ Lalu buka:
 http://127.0.0.1:3000
 ```
 
+Kalau mau dibuka teman satu Wi-Fi, lihat URL LAN yang dicetak di terminal saat app start, misalnya `http://192.168.x.x:3000`.
+
 ## Biar bisa publik
 
 Repo ini sudah siap di-deploy sebagai web app publik karena server bind ke `0.0.0.0` dan memakai port dari environment.
@@ -34,6 +36,9 @@ Kalau dipasang di Replit atau platform lain, pastikan:
 - `PORT` diset oleh platform
 - `HOST=0.0.0.0`
 - proses dijalankan dengan `npm start`
+- Windows Firewall mengizinkan Node.js/Python/port yang dipakai
+
+Kalau teman ada di jaringan yang sama tapi tetap tidak bisa buka, biasanya firewall Windows yang memblokir port. Izinkan app ini masuk lewat Private Network, atau buka port `3000` di firewall.
 
 ## VS Code
 

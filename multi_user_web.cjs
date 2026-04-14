@@ -2,6 +2,7 @@ const http = require("http");
 const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
+const os = require("os");
 const { URL } = require("url");
 const { fork } = require("child_process");
 
@@ -34,6 +35,20 @@ function boot() {
 
 function ensureDir(dir) {
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+}
+
+function getLanAddresses() {
+  const result = [];
+  const nets = os.networkInterfaces();
+
+  for (const entries of Object.values(nets)) {
+    for (const net of entries || []) {
+      if (net.family !== "IPv4" || net.internal) continue;
+      result.push(net.address);
+    }
+  }
+
+  return [...new Set(result)];
 }
 
 function readUsers() {
@@ -559,5 +574,12 @@ const server = http.createServer(async (req, res) => {
 server.listen(PORT, HOST, () => {
   const bindHost = HOST === "0.0.0.0" ? "0.0.0.0 (semua interface)" : HOST;
   console.log(`Multi-user web aktif pada ${bindHost}:${PORT}`);
-  console.log("Untuk akses publik, pakai URL deployment dari platform hosting atau proxy Anda.");
+  const lanUrls = getLanAddresses().map((ip) => `http://${ip}:${PORT}`);
+  if (lanUrls.length) {
+    console.log("URL yang bisa dibuka teman satu jaringan:");
+    for (const url of lanUrls) console.log(`- ${url}`);
+  } else {
+    console.log("Tidak ada alamat LAN terdeteksi. Cek koneksi jaringan perangkat ini.");
+  }
+  console.log("Kalau teman dari luar jaringan mau buka, pakai hosting publik atau tunnel seperti Cloudflare Tunnel/ngrok.");
 });
