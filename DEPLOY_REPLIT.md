@@ -45,6 +45,16 @@ Port:
 - internal `3000`
 - external `80`
 
+Pastikan env berikut ada di deployment:
+
+- `HOST=0.0.0.0`
+- `PORT` dikelola platform
+
+Catatan:
+
+- app ini sudah melayani file publik dari folder `public_multi/`
+- login tetap aktif, jadi publik di sini berarti bisa diakses dari internet setelah di-deploy, bukan anonim
+
 ## 5. Secrets / environment variables
 
 Minimal:

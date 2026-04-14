@@ -19,11 +19,21 @@ npm install
 npm start
 ```
 
-Buka:
+Lalu buka:
 
 ```text
 http://127.0.0.1:3000
 ```
+
+## Biar bisa publik
+
+Repo ini sudah siap di-deploy sebagai web app publik karena server bind ke `0.0.0.0` dan memakai port dari environment.
+
+Kalau dipasang di Replit atau platform lain, pastikan:
+
+- `PORT` diset oleh platform
+- `HOST=0.0.0.0`
+- proses dijalankan dengan `npm start`
 
 ## Upload ke GitHub
 

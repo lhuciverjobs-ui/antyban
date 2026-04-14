@@ -557,5 +557,7 @@ const server = http.createServer(async (req, res) => {
 });
 
 server.listen(PORT, HOST, () => {
-  console.log(`Multi-user web aktif di http://localhost:${PORT}`);
+  const bindHost = HOST === "0.0.0.0" ? "0.0.0.0 (semua interface)" : HOST;
+  console.log(`Multi-user web aktif pada ${bindHost}:${PORT}`);
+  console.log("Untuk akses publik, pakai URL deployment dari platform hosting atau proxy Anda.");
 });
