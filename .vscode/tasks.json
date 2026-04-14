@@ -1,0 +1,35 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Run App",
+      "type": "process",
+      "command": "npm",
+      "args": ["start"],
+      "problemMatcher": []
+    },
+    {
+      "label": "Deploy: commit and push",
+      "type": "process",
+      "command": "pwsh",
+      "args": [
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "${workspaceFolder}/scripts/deploy.ps1",
+        "-Message",
+        "${input:deployMessage}"
+      ],
+      "problemMatcher": []
+    }
+  ],
+  "inputs": [
+    {
+      "id": "deployMessage",
+      "type": "promptString",
+      "description": "Commit message untuk deploy",
+      "default": "public deploy"
+    }
+  ]
+}

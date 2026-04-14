@@ -35,6 +35,13 @@ Kalau dipasang di Replit atau platform lain, pastikan:
 - `HOST=0.0.0.0`
 - proses dijalankan dengan `npm start`
 
+## VS Code
+
+Kalau kamu buka repo ini di VS Code, pakai task bawaan:
+
+- `Run App` untuk menjalankan server lokal
+- `Deploy: commit and push` untuk publish perubahan ke branch aktif di GitHub
+
 ## Upload ke GitHub
 
 Yang di-push cukup isi folder ini saja.
