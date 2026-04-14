@@ -6,6 +6,7 @@
   "scripts": {
     "start": "node multi_user_web.cjs",
     "start:web": "node multi_user_web.cjs",
+    "tunnel": "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts\\cloudflare-tunnel.ps1",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
